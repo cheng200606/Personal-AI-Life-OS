@@ -9,7 +9,7 @@ An Apache-2.0 open source project for importing selected chat exports, photos, a
 ## What works
 
 - Select and preview Markdown or ChatGPT export files locally. Chat messages are not printed in preview; the upload contains only chosen conversations.
-- Import user-selected JPEG, PNG, or WebP photos through the web app. The server re-encodes images to strip metadata, extracts OCR text when Tesseract is available, and supports an optional, consent-gated external image description.
+- Import up to ten user-selected JPEG, PNG, or WebP photos, including from a selected folder. The server re-encodes images to strip metadata and runs OCR inline or as a recoverable job, depending on configuration. Optional external reviews and photo descriptions require consent and use jobs in worker mode.
 - Browse and search an owner-scoped timeline with date and source filters, inspect the original source, and export stable Markdown files with conflict handling.
 - Generate an editable weekly review with source citations, save reminders, and export reviews as Markdown. Template reviews continue to work if external AI is unavailable.
 - Pause, resume, or revoke a source; download an account archive; delete a source or account.

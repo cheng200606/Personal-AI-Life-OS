@@ -18,6 +18,7 @@ from personal_ai_life_os.api.schemas import (
 from personal_ai_life_os.config import Settings
 from personal_ai_life_os.models import User
 from personal_ai_life_os.security import create_access_token, hash_password, verify_password
+from personal_ai_life_os.services.jobs import cancel_model_jobs_for_owner
 from personal_ai_life_os.services.model_usage import model_rates_configured
 
 router = APIRouter(prefix="/auth", tags=["authentication"])
@@ -154,6 +155,7 @@ def set_ai_consent(
         user.ai_consent_at = None
         user.ai_consent_provider = None
         user.ai_consent_disclosure_version = None
+        cancel_model_jobs_for_owner(session, user.id)
     session.commit()
     session.refresh(user)
     return user

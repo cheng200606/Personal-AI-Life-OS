@@ -26,6 +26,7 @@ from personal_ai_life_os.api.schemas import (
 from personal_ai_life_os.config import Settings
 from personal_ai_life_os.models import ModelRun, Review, SourceConnection, SourceItem
 from personal_ai_life_os.services.ingestion import response_item
+from personal_ai_life_os.services.jobs import enqueue_background_job
 from personal_ai_life_os.services.model_usage import model_cost_usd, model_rates_configured
 
 logger = logging.getLogger(__name__)
@@ -271,6 +272,55 @@ def generate_review(
         reserved_cost = model_cost_usd(estimated_input_tokens, config.model_max_output_tokens, config)
         if reserved_cost is None:
             raise HTTPException(409, detail={"code": "model_cost_unconfigured", "message": "Configure current provider pricing before using external AI."})
+        if config.processing_mode == "worker" and reserved_cost <= config.model_max_cost_per_call_usd:
+            draft = _template(items)
+            draft["model"] = {
+                "provider": config.model_provider,
+                "status": "processing",
+                "model": config.openai_model,
+                "prompt_version": PROMPT_VERSION,
+                "latency_ms": 0,
+                "input_tokens": 0,
+                "output_tokens": 0,
+            }
+            rendered = _render_markdown(draft, items)
+            if existing is None:
+                existing = Review(
+                    owner_id=user.id,
+                    period_start=start_at,
+                    period_end=end_at,
+                    status="processing",
+                    draft_json=draft,
+                    final_text=rendered,
+                    source_items=items,
+                )
+                session.add(existing)
+                session.flush()
+            else:
+                existing.status = "processing"
+                existing.draft_json = draft
+                existing.final_text = rendered
+                existing.source_items = items
+            job = enqueue_background_job(
+                session,
+                owner_id=user.id,
+                review_id=existing.id,
+                kind="weekly_review",
+                dedupe_key=f"weekly-review:{existing.id}",
+                payload={
+                    "review_id": existing.id,
+                    "prompt_version": PROMPT_VERSION,
+                    "provider": config.model_provider,
+                    "model": config.openai_model,
+                    "reserved_cost_usd": str(reserved_cost),
+                },
+                max_attempts=1,
+            )
+            draft["model"]["job_id"] = job.id
+            existing.draft_json = draft
+            session.commit()
+            session.refresh(existing)
+            return _response(existing)
         started = time.monotonic()
         if reserved_cost > config.model_max_cost_per_call_usd:
             model_status = "budget_fallback"

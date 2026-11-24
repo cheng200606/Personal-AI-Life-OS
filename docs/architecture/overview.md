@@ -17,8 +17,9 @@ Selected local files
        └─ FastAPI API
             ├─ PostgreSQL (Compose/production) or SQLite (API-only development)
             ├─ Local object store (development) or private S3-compatible bucket
-            ├─ synchronous bounded parsers (Markdown, ChatGPT JSON, photos/OCR)
-            └─ optional consent-gated model calls
+            ├─ bounded import parsers (Markdown, ChatGPT JSON, sanitized photos)
+            ├─ database-backed leased worker (photo OCR, requested reviews/descriptions)
+            └─ optional consent-gated model calls from the worker
 ```
 
 ## Stack
@@ -30,13 +31,13 @@ Selected local files
 - **Local integration:** Python CLI for explicit file selection, preview, sync, and Obsidian export.
 - **Deployment:** Docker Compose with Caddy TLS proxy; operator-supplied database, private bucket, secrets, and backups.
 
-There is no Redis queue in the current MVP. Upload parsing and OCR run synchronously inside the API with input limits. Longer or background processing requires a later durable worker design.
+The MVP uses a database-backed queue with leases, bounded retries, and owner-scoped status/retry endpoints. A worker thread starts with the API process; PostgreSQL claims use `FOR UPDATE SKIP LOCKED`, and expired leases make interrupted tasks eligible for recovery. Redis is not required or currently integrated. Markdown and ChatGPT parsing remain synchronous under their upload limits; photo OCR and requested model work use the worker when `PROCESSING_MODE=worker`.
 
 ## Data flow
 
-1. **Select:** user chooses a Markdown file, ChatGPT export conversations, or individual photo. Chat selection and minimization happen in the browser or CLI before upload.
+1. **Select:** user chooses a Markdown file, ChatGPT export conversations, or up to ten photos/files from a selected folder. Chat selection and minimization happen in the browser or CLI before upload.
 2. **Authorize:** create a source record with selected scope and consent version; source access is tied to the authenticated owner.
-3. **Import:** upload through a size-limited endpoint. The API hashes the selected bytes, stores the original or sanitized photo, parses records, and records line/message/file provenance.
+3. **Import:** upload through a size-limited endpoint. The API hashes the selected bytes, stores the original or sanitized photo, parses records, and records line/message/file provenance. Photo OCR is recorded as a durable job and becomes searchable when it finishes.
 4. **Review:** date/source filters and bounded keyword search show imported records. Raw file access goes through an owner-scoped API endpoint.
 5. **Reflect:** an on-demand review uses confirmed timeline records. Template output copies source text with citations. Optional external output is validated against accessible source IDs and falls back to the template on provider failure.
 6. **Confirm and export:** the user edits and confirms review text, creates or updates reminders, and exports notes to Markdown. CLI export uses stable IDs and detects hand-edited files.
@@ -49,7 +50,7 @@ There is no Redis queue in the current MVP. Upload parsing and OCR run synchrono
 - **SyncRun:** upload checksum, parser version, outcome, item counts, and stored-object reference.
 - **SourceItem:** owner/source, original locator, content digest, event time, timezone, parsed text, and metadata.
 - **MemoryRecord:** user-confirmed notes or confirmed photo descriptions with source links.
-- **Review:** requested period, cited source items, model metadata, draft and user-confirmed text.
+- **Review:** requested period, cited source items, model metadata, queued/draft/confirmed state, and user-confirmed text.
 - **Reminder:** user-owned action with optional source and memory references.
 - **ModelRun:** provider, model, purpose, status, prompt version, latency, and token counts without source content.
 

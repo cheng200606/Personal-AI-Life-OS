@@ -34,7 +34,8 @@ This status reflects repository implementation and local checks. It does not mea
 
 ## M2b — Photos and complete MVP: implementation present; release gates pending
 
-- User-selected JPEG, PNG, and WebP imports, local preview, capture date/timezone form, metadata stripping, OCR, searchable content, source references, and optional consent-gated photo description.
+- User-selected JPEG, PNG, and WebP imports, including up to ten files or a selected directory, local preview, capture date/timezone form for a single photo, metadata stripping, searchable OCR, source references, and optional consent-gated photo description.
+- Database-backed leased jobs cover photo OCR, requested external weekly reviews, and requested photo descriptions. Job status, retry controls, source/consent cancellation, and queue metrics are implemented.
 - Synthetic tests cover EXIF/GPS stripping, OCR behavior, descriptions, search, access scope, and deletion.
 - **Pending:** deployment-specific OCR/container exercise, hosted privacy and deletion verification, and the shared release gates in M4.
 

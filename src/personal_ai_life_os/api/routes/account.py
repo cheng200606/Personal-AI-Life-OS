@@ -13,6 +13,7 @@ from sqlalchemy import select
 
 from personal_ai_life_os.api.deps import CurrentUserDep, DeletionUserDep, SessionDep
 from personal_ai_life_os.models import (
+    BackgroundJob,
     ModelRun,
     Reminder,
     Review,
@@ -20,6 +21,7 @@ from personal_ai_life_os.models import (
     SourceItem,
     SyncRun,
 )
+from personal_ai_life_os.services.jobs import cancel_all_jobs_for_owner
 from personal_ai_life_os.storage import ObjectStore
 
 router = APIRouter(prefix="/account", tags=["account"])
@@ -52,6 +54,13 @@ def download_archive(
     reviews = list(session.scalars(select(Review).where(Review.owner_id == user.id)))
     reminders = list(session.scalars(select(Reminder).where(Reminder.owner_id == user.id)))
     model_runs = list(session.scalars(select(ModelRun).where(ModelRun.owner_id == user.id)))
+    jobs = list(
+        session.scalars(
+            select(BackgroundJob)
+            .where(BackgroundJob.owner_id == user.id)
+            .order_by(BackgroundJob.created_at, BackgroundJob.id)
+        )
+    )
     archive = BytesIO()
     missing_objects: list[str] = []
     with ZipFile(archive, "w", compression=ZIP_DEFLATED, compresslevel=6) as bundle:
@@ -173,6 +182,23 @@ def download_archive(
                 ]
             ),
         )
+        bundle.writestr(
+            "background-jobs.json",
+            _json_bytes(
+                [
+                    {
+                        "id": job.id,
+                        "kind": job.kind,
+                        "status": job.status,
+                        "error_code": job.error_code,
+                        "result": job.result_json,
+                        "created_at": _iso(job.created_at),
+                        "completed_at": _iso(job.completed_at),
+                    }
+                    for job in jobs
+                ]
+            ),
+        )
         store: ObjectStore = request.app.state.object_store
         object_keys = {run.object_key for run in runs if run.object_key}
         object_keys.update(item.object_key for item in items if item.object_key)
@@ -208,6 +234,7 @@ def delete_account(request: Request, user: DeletionUserDep, session: SessionDep)
         tombstone = _json_bytes({"owner_id": user.id, "requested_at": datetime.now(UTC).isoformat()})
         store.write_deletion_tombstone(user.id, tombstone)
         user.deletion_requested_at = datetime.now(UTC)
+        cancel_all_jobs_for_owner(session, user.id)
         for source in session.scalars(
             select(SourceConnection).where(SourceConnection.owner_id == user.id)
         ):

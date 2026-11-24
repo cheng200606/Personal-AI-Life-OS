@@ -40,6 +40,9 @@ h3 { font-size: 16px; line-height: 1.45; margin: 5px 0 7px; }
 .file-drop strong, .file-drop small { display: block; }
 .file-drop strong { font-size: 13px; }
 .file-drop small { color: #8b9086; font-size: 11px; margin-top: 4px; }
+.folder-picker { justify-self: start; position: relative; display: inline-flex; align-items: center; min-height: 34px; padding: 0 12px; border: 1px solid #dce2d7; border-radius: 7px; color: #44533d; font-size: 12px; cursor: pointer; }
+.folder-picker:hover { background: #f7faf4; border-color: #9aa990; }
+.folder-picker input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
 .selection-box { border: 1px solid #e8ebe4; border-radius: 10px; padding: 14px; }
 .selection-head { display: flex; align-items: center; justify-content: space-between; font-size: 12px; margin-bottom: 8px; }
 .conversation-list { max-height: 170px; overflow: auto; display: grid; }
@@ -137,5 +140,6 @@ kbd { border: 1px solid #e4e7e0; border-radius: 4px; font-size: 9px; padding: 2p
 .stack label { display: grid; gap: 6px; font-size: 11px; color: #697064; }
 .stack .primary { margin-top: 4px; }
 .auth-card .text-button { margin-top: 15px; }
+.photo-ocr-state { display: flex; align-items: center; gap: 10px; color: #81877d; font-size: 10px; margin: 7px 0; }
 @media (max-width: 1000px) { .sidebar { width: 210px; flex-basis: 210px; } .main { margin-left: 210px; width: calc(100% - 210px); padding-inline: 25px; } .timeline-layout { grid-template-columns: 1fr; } .source-rail { display: none; } }
 @media (max-width: 700px) { .sidebar { width: 57px; padding: 17px 8px; } .brand { padding: 0 4px; } .brand:not(.brand-mark) { font-size: 0; } .brand-mark.small { width: 37px; height: 37px; } .sidebar nav { margin-top: 35px; } .nav-link { justify-content: center; padding: 12px 0; font-size: 16px; } .nav-link span, .sidebar-foot .user-email, .sidebar-foot .avatar { display: none; } .sidebar-foot { justify-content: center; } .main { margin-left: 57px; width: calc(100% - 57px); padding: 25px 14px 45px; } .topbar { align-items: start; gap: 10px; } .privacy-pill { font-size: 0; padding: 8px; } .hero-panel { padding: 18px; gap: 10px; } .hero-panel h2 { font-size: 18px; } .stat { display: none; } .panel { padding: 17px; } .limit-pill { display: none; } .timeline-layout, .review-grid, .account-grid { grid-template-columns: 1fr; } .review-form { grid-template-columns: 1fr; } .review-form .primary, .check-row { grid-column: 1; } .reminder-form { flex-wrap: wrap; } .reminder-form input:first-child { flex-basis: 100%; } .item-actions { flex-wrap: wrap; } .filter-row { flex-wrap: wrap; } .filter-row label { flex: 1 1 28%; } }

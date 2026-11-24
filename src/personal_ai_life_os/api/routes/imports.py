@@ -15,7 +15,7 @@ from personal_ai_life_os.api.schemas import (
     SyncRunResponse,
 )
 from personal_ai_life_os.config import Settings
-from personal_ai_life_os.models import SourceConnection
+from personal_ai_life_os.models import BackgroundJob, SourceConnection
 from personal_ai_life_os.services.ingestion import IngestionFailure, ingest_file, response_item
 from personal_ai_life_os.storage import ObjectStore
 
@@ -111,13 +111,20 @@ def import_file(
             captured_at=captured_datetime,
             source_timezone=captured_timezone,
             user_timezone=user.timezone,
+            defer_photo_ocr=(source.kind == "photo" and config.processing_mode == "worker"),
         )
     except IngestionFailure as error:
         raise HTTPException(
             status_code=error.status_code,
             detail={"code": error.code, "message": error.message},
         ) from error
+    job_ids = list(
+        session.scalars(
+            select(BackgroundJob.id).where(BackgroundJob.sync_run_id == run.id)
+        )
+    )
     return {
         "sync_run": SyncRunResponse.model_validate(run),
         "items": [SourceItemResponse.model_validate(response_item(item)) for item in items],
+        "job_ids": job_ids,
     }

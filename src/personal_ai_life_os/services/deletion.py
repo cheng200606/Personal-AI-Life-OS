@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
 from personal_ai_life_os.models import (
+    BackgroundJob,
     MemoryRecord,
     Reminder,
     Review,
@@ -17,6 +18,7 @@ from personal_ai_life_os.models import (
     SyncRun,
     User,
 )
+from personal_ai_life_os.services.jobs import cancel_all_jobs_for_owner
 from personal_ai_life_os.storage import ObjectStore
 
 logger = logging.getLogger(__name__)
@@ -81,6 +83,21 @@ def scrub_source_derivatives(session: Session, owner_id: str, source_id: str) ->
         review.final_text = None
         review.draft_json = {"notice": "A source used by this review was deleted. Regenerate the review to restore it."}
         review.source_items = [item for item in review.source_items if item.id not in item_ids]
+    if reviews:
+        session.execute(
+            BackgroundJob.__table__.update()
+            .where(
+                BackgroundJob.review_id.in_([review.id for review in reviews]),
+                BackgroundJob.status.in_(("queued", "running")),
+            )
+            .values(
+                status="cancelled",
+                error_code="source_deleting",
+                completed_at=datetime.now(UTC),
+                lease_expires_at=None,
+                worker_id=None,
+            )
+        )
 
     records = list(
         session.scalars(
@@ -158,6 +175,7 @@ def replay_deletion_tombstones(session_factory: sessionmaker, store: ObjectStore
             else:
                 if user is not None:
                     user.deletion_requested_at = user.deletion_requested_at or datetime.now(UTC)
+                    cancel_all_jobs_for_owner(session, owner_id)
                     sources = list(
                         session.scalars(select(SourceConnection).where(SourceConnection.owner_id == owner_id))
                     )

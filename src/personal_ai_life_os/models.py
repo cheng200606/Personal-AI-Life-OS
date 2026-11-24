@@ -240,6 +240,52 @@ class ModelRun(Base):
     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
 
 
+class BackgroundJob(Base):
+    """Durable work item whose payload contains identifiers and controls, never source content."""
+
+    __tablename__ = "background_jobs"
+    __table_args__ = (
+        UniqueConstraint("owner_id", "dedupe_key", name="uq_background_job_owner_dedupe"),
+        Index("ix_background_jobs_status_available", "status", "available_at"),
+        Index("ix_background_jobs_owner_created", "owner_id", "created_at"),
+        Index("ix_background_jobs_source_id", "source_id"),
+        Index("ix_background_jobs_source_item_id", "source_item_id"),
+        Index("ix_background_jobs_sync_run_id", "sync_run_id"),
+        Index("ix_background_jobs_review_id", "review_id"),
+    )
+
+    id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=new_id)
+    owner_id: Mapped[str] = mapped_column(
+        Uuid(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    source_id: Mapped[str | None] = mapped_column(
+        Uuid(as_uuid=False), ForeignKey("source_connections.id", ondelete="CASCADE"), nullable=True
+    )
+    source_item_id: Mapped[str | None] = mapped_column(
+        Uuid(as_uuid=False), ForeignKey("source_items.id", ondelete="CASCADE"), nullable=True
+    )
+    sync_run_id: Mapped[str | None] = mapped_column(
+        Uuid(as_uuid=False), ForeignKey("sync_runs.id", ondelete="CASCADE"), nullable=True
+    )
+    review_id: Mapped[str | None] = mapped_column(
+        Uuid(as_uuid=False), ForeignKey("reviews.id", ondelete="CASCADE"), nullable=True
+    )
+    kind: Mapped[str] = mapped_column(String(40), index=True)
+    status: Mapped[str] = mapped_column(String(24), default="queued", index=True)
+    dedupe_key: Mapped[str] = mapped_column(String(300))
+    payload_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    result_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    attempt_count: Mapped[int] = mapped_column(Integer, default=0)
+    max_attempts: Mapped[int] = mapped_column(Integer, default=3)
+    available_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow, index=True)
+    lease_expires_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
+    worker_id: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    error_code: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow, onupdate=utcnow)
+    completed_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
+
+
 class Reminder(Base):
     __tablename__ = "reminders"
     __table_args__ = (Index("ix_reminders_owner_due", "owner_id", "due_at"),)

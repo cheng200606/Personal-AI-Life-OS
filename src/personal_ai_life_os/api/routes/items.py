@@ -19,8 +19,15 @@ from personal_ai_life_os.api.schemas import (
     TimelineResponse,
 )
 from personal_ai_life_os.config import Settings
-from personal_ai_life_os.models import MemoryRecord, ModelRun, SourceConnection, SourceItem
+from personal_ai_life_os.models import (
+    BackgroundJob,
+    MemoryRecord,
+    ModelRun,
+    SourceConnection,
+    SourceItem,
+)
 from personal_ai_life_os.services.ingestion import response_item
+from personal_ai_life_os.services.jobs import enqueue_background_job
 from personal_ai_life_os.services.model_usage import model_cost_usd, model_rates_configured
 from personal_ai_life_os.storage import ObjectStore
 
@@ -223,7 +230,13 @@ def get_item(item_id: str, user: CurrentUserDep, session: SessionDep) -> dict:
 
 
 @router.post("/items/{item_id}/describe")
-def describe_photo(item_id: str, request: Request, user: CurrentUserDep, session: SessionDep) -> dict:
+def describe_photo(
+    item_id: str,
+    request: Request,
+    user: CurrentUserDep,
+    session: SessionDep,
+    regenerate: bool = False,
+) -> dict:
     item = session.scalar(
         select(SourceItem)
         .join(SourceConnection, SourceConnection.id == SourceItem.source_id)
@@ -261,6 +274,48 @@ def describe_photo(item_id: str, request: Request, user: CurrentUserDep, session
         raise HTTPException(409, detail={"code": "model_cost_unconfigured", "message": "Configure current provider pricing before requesting a photo description."})
     if reserved_cost > config.model_max_cost_per_call_usd:
         raise HTTPException(409, detail={"code": "model_cost_budget_exceeded", "message": "This photo description exceeds the configured per-call cost budget."})
+
+    if config.processing_mode == "worker":
+        source = session.get(SourceConnection, item.source_id)
+        if source is None or source.status != "active":
+            raise HTTPException(409, detail={"code": "source_not_active", "message": "Resume the source before requesting a description."})
+        existing_job = session.scalar(
+            select(BackgroundJob).where(
+                BackgroundJob.owner_id == user.id,
+                BackgroundJob.dedupe_key == f"photo-description:{item.id}",
+            )
+        )
+        if (
+            existing_job is not None
+            and existing_job.status == "completed"
+            and not regenerate
+            and item.metadata_json.get("description_status") != "confirmed"
+            and isinstance(existing_job.result_json, dict)
+            and isinstance(existing_job.result_json.get("description"), str)
+        ):
+            return existing_job.result_json
+        job = enqueue_background_job(
+            session,
+            owner_id=user.id,
+            source_id=source.id,
+            source_item_id=item.id,
+            kind="photo_description",
+            dedupe_key=f"photo-description:{item.id}",
+            payload={
+                "source_item_id": item.id,
+                "provider": config.model_provider,
+                "model": config.openai_model,
+                "reserved_cost_usd": str(reserved_cost),
+            },
+            max_attempts=1,
+        )
+        item.metadata_json = {
+            **item.metadata_json,
+            "description_status": job.status,
+            "description_job_id": job.id,
+        }
+        session.commit()
+        return {"source_item_id": item.id, "job_id": job.id, "status": job.status}
 
     store: ObjectStore = request.app.state.object_store
     try:
@@ -405,6 +460,7 @@ def confirm_photo_description(
     item.metadata_json = {
         **item.metadata_json,
         "user_description": description.strip(),
+        "description_status": "confirmed",
         "description_confirmed_at": datetime.now(UTC).isoformat(),
     }
     session.commit()

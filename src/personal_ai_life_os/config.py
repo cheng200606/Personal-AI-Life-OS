@@ -24,6 +24,9 @@ class Settings(BaseSettings):
     database_url: str = "sqlite+pysqlite:///./data/lifeos.db"
     data_dir: Path = Path("./data")
     auto_create_schema: bool = True
+    processing_mode: Literal["inline", "worker"] = "inline"
+    worker_poll_interval_seconds: float = 0.5
+    worker_lease_seconds: int = 60
 
     access_token_secret: str = "development-only-change-this-secret"
     access_token_ttl_hours: int = 12
@@ -66,6 +69,8 @@ class Settings(BaseSettings):
             raise ValueError("ACCESS_TOKEN_SECRET must contain at least 32 characters.")
         if self.auto_create_schema:
             raise ValueError("AUTO_CREATE_SCHEMA must be false in production; run Alembic migrations.")
+        if self.processing_mode != "worker":
+            raise ValueError("Production requires the recoverable database-backed worker.")
         if self.registration_mode == "open":
             raise ValueError("Open self-registration is not allowed in production.")
         if self.registration_mode == "invitation" and not self.signup_invite_code:

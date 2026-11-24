@@ -7,7 +7,7 @@ This checklist separates repository evidence from hosting and user research evid
 - [x] Python lint and tests pass locally.
 - [x] Web lint and production build pass locally.
 - [x] Alembic schema is current and both Compose configurations parse.
-- [x] [GitHub Actions Linux matrix and Docker Compose smoke](https://github.com/cheng200606/Personal-AI-Life-OS/actions/runs/45455087848) pass for the committed MVP.
+- [x] [GitHub Actions Linux matrix and Docker Compose smoke](https://github.com/cheng200606/Personal-AI-Life-OS/actions/runs/45455673155) pass for the committed MVP.
 - [x] Owner-scoped API tests include two users, import/export, source/account deletion, reviews, reminders, and photo paths.
 - [x] Synthetic review evaluation covers 30 scenarios: conflicts, insufficient evidence, timezone boundaries, duplicates, and model failure fallback.
 - [x] Support matrix, deployment guide, and backup/restore runbook are published in the repository.

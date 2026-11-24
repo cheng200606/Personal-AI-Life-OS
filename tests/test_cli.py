@@ -1,5 +1,6 @@
 import json
 import os
+from contextlib import contextmanager
 from pathlib import Path
 
 from typer.testing import CliRunner
@@ -70,3 +71,80 @@ def test_markdown_export_is_atomic_and_repeatable(tmp_path: Path) -> None:
     assert first == "created"
     assert second == "unchanged"
     assert list(tmp_path.glob(".lifeos-*")) == []
+
+
+def test_cli_login_sync_and_conflict_safe_export(client, monkeypatch, tmp_path: Path) -> None:
+    credentials_path = tmp_path / "credentials.json"
+    monkeypatch.setenv("LIFEOS_CREDENTIALS_FILE", str(credentials_path))
+    monkeypatch.delenv("LIFEOS_ACCESS_TOKEN", raising=False)
+    monkeypatch.delenv("LIFEOS_API_URL", raising=False)
+    assert client.post(
+        "/api/v1/auth/register",
+        json={"email": "cli@example.com", "password": "correct horse battery staple", "timezone": "UTC"},
+    ).status_code == 201
+
+    def post_login(url: str, *, json: dict, timeout: int):
+        assert timeout == 30
+        return client.post(url.removeprefix("http://127.0.0.1:8000"), json=json)
+
+    monkeypatch.setattr(cli.httpx, "post", post_login)
+    runner = CliRunner()
+    logged_in = runner.invoke(
+        cli.app,
+        ["login", "--email", "cli@example.com", "--password", "correct horse battery staple"],
+    )
+    assert logged_in.exit_code == 0, logged_in.output
+
+    class ApiClientAdapter:
+        def __init__(self, token: str) -> None:
+            self.headers = {"Authorization": "Bearer " + token}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args) -> None:
+            return None
+
+        def get(self, path: str, *, params=None):
+            return client.get(path, params=params, headers=self.headers)
+
+        def post(self, path: str, *, data=None, files=None, json=None):
+            return client.post(path, data=data, files=files, json=json, headers=self.headers)
+
+    @contextmanager
+    def authed_client(api_url: str):
+        yield ApiClientAdapter(cli._access_token(api_url))
+
+    monkeypatch.setattr(cli, "_authed_client", authed_client)
+
+    identity = runner.invoke(cli.app, ["whoami"])
+    assert identity.exit_code == 0, identity.output
+    assert "cli@example.com" in identity.output
+
+    synced = runner.invoke(cli.app, ["sync", str(FIXTURES / "memory.md"), "--yes"])
+    assert synced.exit_code == 0, synced.output
+    assert "Imported memory.md:" in synced.output
+    token = cli._access_token("http://127.0.0.1:8000")
+    headers = {"Authorization": "Bearer " + token}
+    source = client.get("/api/v1/sources", headers=headers).json()[0]
+    assert source["kind"] == "memory_markdown"
+    item = client.get("/api/v1/timeline", headers=headers).json()["items"][0]
+    destination = tmp_path / "vault"
+    destination.mkdir()
+
+    exported = runner.invoke(
+        cli.app,
+        ["export", str(destination), "--item-id", item["id"], "--yes"],
+    )
+    assert exported.exit_code == 0, exported.output
+    target = next(destination.glob("*.md"))
+    assert item["id"] in target.read_text(encoding="utf-8")
+
+    target.write_text("A deliberate user edit.", encoding="utf-8")
+    repeated = runner.invoke(
+        cli.app,
+        ["export", str(destination), "--item-id", item["id"], "--yes"],
+    )
+    assert repeated.exit_code == 0, repeated.output
+    assert "conflict" in repeated.output
+    assert target.read_text(encoding="utf-8") == "A deliberate user edit."

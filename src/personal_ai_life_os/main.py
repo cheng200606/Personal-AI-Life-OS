@@ -1,6 +1,7 @@
 """FastAPI application entry point and dependency wiring."""
 
 import logging
+import threading
 from collections import defaultdict, deque
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -16,6 +17,7 @@ from personal_ai_life_os.api.routes.auth import router as auth_router
 from personal_ai_life_os.api.routes.health import router as health_router
 from personal_ai_life_os.api.routes.imports import router as imports_router
 from personal_ai_life_os.api.routes.items import router as items_router
+from personal_ai_life_os.api.routes.jobs import router as jobs_router
 from personal_ai_life_os.api.routes.metrics import router as metrics_router
 from personal_ai_life_os.api.routes.reminders import router as reminders_router
 from personal_ai_life_os.api.routes.reviews import router as reviews_router
@@ -23,6 +25,7 @@ from personal_ai_life_os.api.routes.sources import router as sources_router
 from personal_ai_life_os.config import Settings, settings
 from personal_ai_life_os.db import Base, create_database_engine, create_session_factory
 from personal_ai_life_os.services.deletion import replay_deletion_tombstones
+from personal_ai_life_os.services.jobs import worker_loop
 from personal_ai_life_os.storage import ObjectStore, create_object_store
 
 logger = logging.getLogger("personal_ai_life_os")
@@ -43,8 +46,23 @@ def create_app(
         if runtime_config.auto_create_schema:
             Base.metadata.create_all(bind=engine)
         replay_deletion_tombstones(session_factory, store)
-        yield
-        engine.dispose()
+        stop_worker = threading.Event()
+        worker_thread = None
+        if runtime_config.processing_mode == "worker":
+            worker_thread = threading.Thread(
+                target=worker_loop,
+                args=(session_factory, store, runtime_config, stop_worker),
+                name="lifeos-background-worker",
+                daemon=True,
+            )
+            worker_thread.start()
+        try:
+            yield
+        finally:
+            if worker_thread is not None:
+                stop_worker.set()
+                worker_thread.join(timeout=runtime_config.worker_lease_seconds + 5)
+            engine.dispose()
 
     application = FastAPI(
         title="Personal AI Life OS",
@@ -116,6 +134,7 @@ def create_app(
     application.include_router(account_router, prefix="/api/v1")
     application.include_router(sources_router, prefix="/api/v1")
     application.include_router(imports_router, prefix="/api/v1")
+    application.include_router(jobs_router, prefix="/api/v1")
     application.include_router(items_router, prefix="/api/v1")
     application.include_router(reviews_router, prefix="/api/v1")
     application.include_router(reminders_router, prefix="/api/v1")

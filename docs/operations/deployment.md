@@ -25,6 +25,8 @@ The production Compose file is a deployment template. It has not been applied to
    curl --fail https://YOUR_DOMAIN/api/v1/ready
    ```
 
+   Keep `PROCESSING_MODE=worker`. The API process starts a database-backed worker thread for OCR and requested model jobs. The production template runs one Uvicorn process; PostgreSQL lease claims also coordinate jobs if more API processes are added later.
+
 6. Confirm Caddy obtained a certificate; registration is invitation-only by default; `/api/v1/metrics` rejects requests without the metrics token; API and database ports are not publicly exposed; and the bucket rejects anonymous access.
 7. Complete the [release checklist](release-checklist.md) and [backup/restore exercise](backup-restore.md) before using real data.
 

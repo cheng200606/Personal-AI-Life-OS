@@ -60,6 +60,7 @@ def process_photo(
     *,
     captured_at: datetime | None = None,
     source_timezone: str | None = None,
+    defer_ocr: bool = False,
 ) -> ProcessedPhoto:
     suffix = Path(filename).suffix.lower()
     if suffix not in SUPPORTED_SUFFIXES:
@@ -92,14 +93,7 @@ def process_photo(
 
     sanitized = output.getvalue()
     occurred_at = captured_at or exif_time
-    ocr_status = "unavailable"
-    extracted_text = ""
-    if shutil.which("tesseract"):
-        try:
-            extracted_text = pytesseract.image_to_string(image, lang="eng+chi_sim", timeout=20).strip()
-            ocr_status = "extracted" if extracted_text else "no_text"
-        except (pytesseract.TesseractError, OSError, RuntimeError, ValueError):
-            ocr_status = "failed"
+    extracted_text, ocr_status = ("", "pending") if defer_ocr else extract_photo_text(image)
 
     basename = Path(filename).name[:180] or "photo"
     raw_digest = sha256(payload).hexdigest()
@@ -124,3 +118,25 @@ def process_photo(
         },
     )
     return ProcessedPhoto(item=item, sanitized_bytes=sanitized, content_type=media_type)
+
+
+def extract_photo_text(image: Image.Image) -> tuple[str, str]:
+    """Extract OCR from an already sanitized image without changing the stored image bytes."""
+    if not shutil.which("tesseract"):
+        return "", "unavailable"
+    try:
+        text = pytesseract.image_to_string(image, lang="eng+chi_sim", timeout=20).strip()
+    except (pytesseract.TesseractError, OSError, RuntimeError, ValueError):
+        return "", "failed"
+    return text, "extracted" if text else "no_text"
+
+
+def extract_photo_text_bytes(payload: bytes) -> tuple[str, str]:
+    """Open sanitized object bytes and extract OCR in a worker."""
+    try:
+        with Image.open(BytesIO(payload)) as image:
+            if image.format not in {"JPEG", "PNG", "WEBP"}:
+                raise UnsupportedPhotoError("Stored photo format is invalid.")
+            return extract_photo_text(image)
+    except (UnidentifiedImageError, OSError, ValueError, Image.DecompressionBombError) as error:
+        raise UnsupportedPhotoError("The sanitized photo could not be opened for OCR.") from error

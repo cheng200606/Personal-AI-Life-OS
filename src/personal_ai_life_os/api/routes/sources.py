@@ -25,6 +25,7 @@ from personal_ai_life_os.services.deletion import (
     request_source_deletion,
     scrub_source_derivatives,
 )
+from personal_ai_life_os.services.jobs import cancel_jobs_for_source
 from personal_ai_life_os.storage import ObjectStore
 
 router = APIRouter(tags=["sources"])
@@ -111,6 +112,8 @@ def update_source_status(
             },
         )
     source.status = payload.status
+    if payload.status == "paused":
+        cancel_jobs_for_source(session, source.id, reason="source_paused")
     session.commit()
     session.refresh(source)
     return source
@@ -157,6 +160,7 @@ def revoke_source(
             detail={"code": "source_deleting", "message": "This source is being deleted."},
         )
     source.status = "revoked"
+    cancel_jobs_for_source(session, source.id, reason="source_revoked")
     session.commit()
     session.refresh(source)
     return source
@@ -179,6 +183,7 @@ def delete_source(
             detail={"code": "source_tombstone_pending", "message": "Deletion could not be durably recorded. Source data remains available; retry shortly."},
         ) from error
     source.status = "deleting"
+    cancel_jobs_for_source(session, source.id, reason="source_deleting")
     session.commit()
 
     items = scrub_source_derivatives(session, user.id, source_id)

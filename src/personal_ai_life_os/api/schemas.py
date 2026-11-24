@@ -129,6 +129,20 @@ class SyncRunResponse(BaseModel):
 class ImportResultResponse(BaseModel):
     sync_run: SyncRunResponse
     items: list["SourceItemResponse"]
+    job_ids: list[str] = Field(default_factory=list)
+
+
+class BackgroundJobResponse(BaseModel):
+    id: str
+    kind: str
+    status: str
+    attempt_count: int
+    max_attempts: int
+    error_code: str | None
+    result_json: dict[str, Any] | None
+    created_at: datetime
+    updated_at: datetime
+    completed_at: datetime | None
 
 
 class SourceItemResponse(BaseModel):

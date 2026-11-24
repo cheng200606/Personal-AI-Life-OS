@@ -6,13 +6,13 @@ The project supports cloud deployment, but cloud hosting is not enabled by this 
 
 - CLI previews show file metadata and conversation titles/counts, not chat message bodies. ChatGPT JSON is read locally and the upload is reduced to the selected conversations.
 - Authentication uses Argon2 password hashes and signed bearer tokens. Records and API lookups are scoped to the authenticated owner.
-- Imports have configured size limits, content hashes, parser versions, stable source locators, and duplicate detection. The current importer runs synchronously within the API process.
+- Imports have configured size limits, content hashes, parser versions, stable source locators, and duplicate detection. Markdown and ChatGPT parsing are bounded synchronous work. In `worker` mode, photo OCR, requested external weekly reviews, and user-requested photo descriptions run as database-backed jobs with leases and bounded retries. Job payloads store identifiers and controls; source content remains in its owner-scoped records or object storage. Job results, including unconfirmed description drafts, are owner-scoped and removed with the related source.
 - Photos are decoded, orientation-corrected, and re-encoded before storage. The copy removes EXIF and GPS metadata. OCR output is searchable when Tesseract is installed.
-- External review and photo-description calls require current, explicit consent. The UI discloses provider, data fields, retention text, and privacy URL. Photo descriptions are drafts until the user confirms them.
+- External review and photo-description calls require current, explicit consent. The UI discloses provider, data fields, retention text, and privacy URL. Queued model work is cancelled when consent is withdrawn; photo descriptions are drafts until the user confirms them.
 - Logs and metrics contain operation types, status, latency, and token counts, not source text or image bytes. Metrics require a separate bearer token.
 - External calls require operator-configured input/output token prices. Reviews reserve a conservative cost estimate before sending and fall back to the local template when the per-call budget would be exceeded. Usage and estimated spend are aggregated without user identifiers.
 - Source and account deletion first write a durable tombstone, block ordinary access, scrub linked generated records, and erase object-store data. Tombstones are replayed during startup before the API serves traffic, including after a database restore.
-- Account archive includes a JSON manifest, source records, generated records, model usage metadata, and available imported objects.
+- Account archive includes a JSON manifest, source records, generated records, background job results, model usage metadata, and available imported objects.
 
 ## Data sent to external models
 
@@ -22,7 +22,7 @@ No external model call should be enabled until the operator verifies the provide
 
 ## Deletion and backups
 
-Deleting an item currently deletes the entire source upload and all parsed items created from that upload, because those records share one immutable original file. The UI warns before this operation. Deleting a source also invalidates reviews and reminders that cite it and removes their copied evidence.
+Deleting an item currently deletes its source connection and every uploaded file and parsed item associated with that source. For a photo batch, deleting one item removes the other selected photos in that batch too. The UI warns before this operation. Deleting a source also invalidates reviews and reminders that cite it and removes their copied evidence.
 
 Database backups can restore deleted rows. The S3 deletion ledger is therefore retained separately from user object prefixes and is replayed before a restored database is served. A production operator must test that recovery path and set a published backup expiry window. The example operating policy is 35 days; it is a deployment requirement, not a retention guarantee supplied by this repository. See [backup and restore](../operations/backup-restore.md).
 
@@ -35,7 +35,7 @@ Database backups can restore deleted rows. The S3 deletion ledger is therefore r
 
 ## Known limits
 
-- There is no hosted identity provider, formal audit log, asynchronous worker queue, or managed backup service in the repository.
+- There is no hosted identity provider, formal audit log, Redis integration, or managed backup service in the repository. The database-backed worker runs inside the API process; operators should use a process manager and verify queue age/failure metrics.
 - Source deletion tombstones are stored in the configured object store. Database-only restore replay is implemented; disaster recovery of both the database and the entire object bucket requires a tested, current object-store backup and preserved tombstones.
 - Local development secrets and the development Compose stack are not suitable for public hosting.
 - No real-user data, beta participants, hosted deletion SLA, or production restore exercise has been verified.

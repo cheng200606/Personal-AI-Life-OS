@@ -9,7 +9,7 @@ from fastapi import APIRouter, HTTPException, Request
 from sqlalchemy import func, select
 
 from personal_ai_life_os.api.deps import SessionDep
-from personal_ai_life_os.models import ModelRun, SyncRun
+from personal_ai_life_os.models import BackgroundJob, ModelRun, SyncRun
 from personal_ai_life_os.storage import ObjectStore
 
 router = APIRouter(tags=["operations"])
@@ -36,6 +36,26 @@ def metrics(request: Request, session: SessionDep) -> dict:
     processing_imports = session.scalar(
         select(func.count()).select_from(SyncRun).where(SyncRun.status == "processing")
     ) or 0
+    queued_jobs = session.scalar(
+        select(func.count()).select_from(BackgroundJob).where(BackgroundJob.status == "queued")
+    ) or 0
+    running_jobs = session.scalar(
+        select(func.count()).select_from(BackgroundJob).where(BackgroundJob.status == "running")
+    ) or 0
+    failed_jobs_24h = session.scalar(
+        select(func.count()).select_from(BackgroundJob).where(
+            BackgroundJob.status == "failed", BackgroundJob.completed_at >= cutoff
+        )
+    ) or 0
+    now = datetime.now(UTC)
+    oldest_queued = session.scalar(
+        select(func.min(BackgroundJob.available_at)).where(
+            BackgroundJob.status == "queued", BackgroundJob.available_at <= now
+        )
+    )
+    if oldest_queued is not None and oldest_queued.tzinfo is None:
+        oldest_queued = oldest_queued.replace(tzinfo=UTC)
+    oldest_queue_age = max(0, (now - oldest_queued).total_seconds()) if oldest_queued else 0
     model_runs = list(session.scalars(select(ModelRun)))
     model_calls = len(model_runs)
     model_failures = sum(1 for run in model_runs if run.status in {"failed", "fallback"})
@@ -71,6 +91,10 @@ def metrics(request: Request, session: SessionDep) -> dict:
         "request_latency_p95_ms": round(p95_latency, 2),
         "imports_failed_24h": failed_imports,
         "imports_processing": processing_imports,
+        "jobs_queued": queued_jobs,
+        "jobs_running": running_jobs,
+        "jobs_failed_24h": failed_jobs_24h,
+        "job_queue_oldest_seconds": round(oldest_queue_age, 2),
         "deletions_pending": pending_deletions,
         "deletion_duration_p95_seconds": round(deletion_p95, 2),
         "external_model_calls": model_calls,

@@ -36,6 +36,7 @@ from personal_ai_life_os.parsers.photo import (
     UnsupportedPhotoError,
     process_photo,
 )
+from personal_ai_life_os.services.jobs import enqueue_background_job
 from personal_ai_life_os.storage import ObjectStore
 
 logger = logging.getLogger(__name__)
@@ -63,6 +64,7 @@ def _parser_for(
     captured_at: datetime | None,
     source_timezone: str | None,
     user_timezone: str,
+    defer_photo_ocr: bool,
 ) -> tuple[list[ParsedItem], str, bytes, str]:
     if source.kind == "memory_markdown":
         if not filename.lower().endswith((".md", ".markdown")):
@@ -116,6 +118,7 @@ def _parser_for(
                 _safe_filename(filename),
                 captured_at=captured_at,
                 source_timezone=source_timezone,
+                defer_ocr=defer_photo_ocr,
             )
         except UnsupportedPhotoError as error:
             raise IngestionFailure("unsupported_photo", str(error)) from error
@@ -153,6 +156,7 @@ def ingest_file(
     captured_at: datetime | None = None,
     source_timezone: str | None = None,
     user_timezone: str = "UTC",
+    defer_photo_ocr: bool = False,
 ) -> tuple[SyncRun, list[SourceItem]]:
     if source.owner_id != owner_id:
         raise IngestionFailure("source_not_found", "The selected source was not found.", 404)
@@ -172,7 +176,15 @@ def ingest_file(
     stored_object_key: str | None = None
     try:
         parsed_items, parser_version, stored_payload, stored_content_type = _parser_for(
-            source, payload, filename, content_type, conversation_ids, captured_at, source_timezone, user_timezone
+            source,
+            payload,
+            filename,
+            content_type,
+            conversation_ids,
+            captured_at,
+            source_timezone,
+            user_timezone,
+            defer_photo_ocr,
         )
         run.parser_version = parser_version
         run.items_seen = len(parsed_items)
@@ -249,9 +261,30 @@ def ingest_file(
                 if existing is not None:
                     persisted.append(existing)
 
-        run.status = "completed"
-        run.completed_at = datetime.now(UTC)
-        source.last_sync_at = run.completed_at
+        pending_ocr_items = [
+            item
+            for item in persisted
+            if item.kind == "photo" and item.metadata_json.get("ocr_status") == "pending"
+        ]
+        for item in pending_ocr_items:
+            job = enqueue_background_job(
+                session,
+                owner_id=owner_id,
+                source_id=source.id,
+                source_item_id=item.id,
+                sync_run_id=run.id,
+                kind="photo_ocr",
+                dedupe_key=f"photo-ocr:{run.id}:{item.id}",
+                payload={"source_item_id": item.id},
+            )
+            item.metadata_json = {**item.metadata_json, "ocr_job_id": job.id}
+        if pending_ocr_items:
+            run.status = "processing"
+            run.completed_at = None
+        else:
+            run.status = "completed"
+            run.completed_at = datetime.now(UTC)
+            source.last_sync_at = run.completed_at
         session.commit()
         session.refresh(run)
         return run, persisted
