@@ -6,7 +6,7 @@ This status reflects repository implementation and local checks. It does not mea
 
 - Apache-2.0 license, contribution/security docs, product/architecture decisions, synthetic fixtures, Ruff/pytest, and GitHub Actions.
 - FastAPI startup, health/readiness routes, Python containers, local Compose stack, and web build/lint CI steps.
-- Windows API-only development and Linux CI paths are documented. Compose syntax is checked; local container execution remains dependent on an available Docker engine.
+- Windows API-only development and Linux CI paths are documented. GitHub Actions passed the Python 3.11/3.12 matrix and Docker Compose build/readiness smoke; local container execution remains dependent on an available Docker engine.
 
 ## M1 — Local import and persistence: implemented
 

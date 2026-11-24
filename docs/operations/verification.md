@@ -16,6 +16,7 @@
 | `uv run alembic upgrade head` on a fresh temporary SQLite database, then `uv run alembic check` | Pass; all four migrations applied, no model/schema drift |
 | `npm run lint` in `web/` | Pass |
 | `npm run build` in `web/` | Pass |
+| GitHub Actions run `45455087848` | Pass: Linux Python 3.11/3.12 lint and tests, Web lint/build, Docker Compose image build, startup, readiness checks, and cleanup. The runner reported a non-blocking Node.js 20 action-runtime deprecation notice. |
 | `docker compose --env-file .env.example -f docker-compose.yml config --quiet` | Pass |
 | `docker compose --env-file .env.production.example -f docker-compose.production.yml config --quiet` | Pass |
 | `bash -n scripts/backup-production.sh scripts/restore-production.sh` | Pass |
@@ -31,4 +32,4 @@ The current test set also exercises model cost estimation and pricing disclosure
 
 ## Not verified
 
-The Docker daemon was not available (`dockerDesktopLinuxEngine` pipe missing), so the API/web images were not built or started locally. No live DNS, TLS certificate, private S3 bucket, managed PostgreSQL, external provider, backup lifecycle, production restore exercise, security review, or user study was available. Those remain mandatory checklist items before accepting real personal data.
+The local Windows Docker daemon was not available (`dockerDesktopLinuxEngine` pipe missing), so the API/web images were not built on this machine; the Linux GitHub Actions run did build and start them. No live DNS, TLS certificate, private S3 bucket, managed PostgreSQL, external provider, backup lifecycle, production restore exercise, security review, or user study was available. Those remain mandatory checklist items before accepting real personal data.
