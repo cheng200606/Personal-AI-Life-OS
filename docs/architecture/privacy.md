@@ -1,36 +1,41 @@
 # Privacy and Data Handling
 
-The selected architecture is cloud-based, so user-selected source material is transmitted to and processed by the configured service. Consent and visibility are core product behavior.
+The project supports cloud deployment, but cloud hosting is not enabled by this repository. A deployment operator controls the API, database, object store, logs, TLS, and backups. Users must select the files and conversations they want to import.
 
-## User controls
+## Implemented controls
 
-- Show which source and files are selected before first sync.
-- Provide pause, resume, disconnect, per-item delete, full export, and account deletion.
-- Show sync history, failures, and the last successful sync.
-- Keep generated notes and reminders as drafts until the user confirms them.
-- Never write back to original source files; Obsidian export is an explicit user action.
+- CLI previews show file metadata and conversation titles/counts, not chat message bodies. ChatGPT JSON is read locally and the upload is reduced to the selected conversations.
+- Authentication uses Argon2 password hashes and signed bearer tokens. Records and API lookups are scoped to the authenticated owner.
+- Imports have configured size limits, content hashes, parser versions, stable source locators, and duplicate detection. The current importer runs synchronously within the API process.
+- Photos are decoded, orientation-corrected, and re-encoded before storage. The copy removes EXIF and GPS metadata. OCR output is searchable when Tesseract is installed.
+- External review and photo-description calls require current, explicit consent. The UI discloses provider, data fields, retention text, and privacy URL. Photo descriptions are drafts until the user confirms them.
+- Logs and metrics contain operation types, status, latency, and token counts, not source text or image bytes. Metrics require a separate bearer token.
+- External calls require operator-configured input/output token prices. Reviews reserve a conservative cost estimate before sending and fall back to the local template when the per-call budget would be exceeded. Usage and estimated spend are aggregated without user identifiers.
+- Source and account deletion first write a durable tombstone, block ordinary access, scrub linked generated records, and erase object-store data. Tombstones are replayed during startup before the API serves traffic, including after a database restore.
+- Account archive includes a JSON manifest, source records, generated records, model usage metadata, and available imported objects.
 
-## Data minimization
+## Data sent to external models
 
-- Begin with local file imports rather than broad account permissions.
-- Request only file types and scopes needed for the connector.
-- Store source text and media only when required for review and configured search.
-- Do not log source text, image bytes, tokens, or private memory file contents.
-- Document retention and backup deletion behavior before production hosting.
+When external review is requested, selected timeline item dates, titles, source-item IDs, and text for the requested review period are sent to the configured provider. When a user explicitly requests a photo description, the sanitized image is sent. The provider name, data fields, retention disclosure, and provider privacy URL must be shown before consent. Model use remains optional; a cited template review is available without a provider.
 
-## Security baseline
+No external model call should be enabled until the operator verifies the provider's current terms and fills the deployment disclosure accurately. No end-to-end encryption is claimed because server-side parsing and optional model processing require plaintext.
 
-- Use TLS in transit and managed secrets in hosted deployments.
-- Use infrastructure encryption at rest for databases and object storage.
-- Scope every query and object key to the authenticated owner/workspace.
-- Treat imported content as untrusted data; keep it separate from system prompts and tool instructions.
-- Use signed, short-lived URLs for object access and audit source access.
-- Make export and deletion cover originals, parsed text, embeddings, summaries, and backups according to a published retention policy.
+## Deletion and backups
 
-## Model providers
+Deleting an item currently deletes the entire source upload and all parsed items created from that upload, because those records share one immutable original file. The UI warns before this operation. Deleting a source also invalidates reviews and reminders that cite it and removes their copied evidence.
 
-Before sending content to an external model provider, disclose which fields are sent, which provider processes them, and what retention terms apply. Keep a provider adapter so self-hosted models can be considered later. Do not claim end-to-end encryption while server-side processing needs plaintext.
+Database backups can restore deleted rows. The S3 deletion ledger is therefore retained separately from user object prefixes and is replayed before a restored database is served. A production operator must test that recovery path and set a published backup expiry window. The example operating policy is 35 days; it is a deployment requirement, not a retention guarantee supplied by this repository. See [backup and restore](../operations/backup-restore.md).
 
-## Current status
+## Deployment requirements
 
-These are design requirements, not yet implemented controls. The current API is a health-check shell and must not be used to upload real personal data.
+- Use TLS, managed secrets, private S3-compatible object storage, server-side encryption, and an encrypted database volume.
+- Require invitation-only registration and strong unique secrets; keep API and database ports private.
+- Configure and test backup retention, deletion replay, monitoring, and incident response before real user data is accepted.
+- Publish an operator privacy contact and retention policy. Remove access logs or tracing that could capture request bodies or authorization headers.
+
+## Known limits
+
+- There is no hosted identity provider, formal audit log, asynchronous worker queue, or managed backup service in the repository.
+- Source deletion tombstones are stored in the configured object store. Database-only restore replay is implemented; disaster recovery of both the database and the entire object bucket requires a tested, current object-store backup and preserved tombstones.
+- Local development secrets and the development Compose stack are not suitable for public hosting.
+- No real-user data, beta participants, hosted deletion SLA, or production restore exercise has been verified.

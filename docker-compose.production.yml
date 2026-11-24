@@ -1,0 +1,95 @@
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      LIFEOS_DOMAIN: ${LIFEOS_DOMAIN:?Set LIFEOS_DOMAIN}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      web:
+        condition: service_healthy
+
+  web:
+    build: ./web
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/ >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build: .
+    restart: unless-stopped
+    environment:
+      APP_ENV: production
+      API_HOST: 0.0.0.0
+      API_PORT: 8000
+      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL}
+      AUTO_CREATE_SCHEMA: "false"
+      ACCESS_TOKEN_SECRET: ${ACCESS_TOKEN_SECRET:?Set ACCESS_TOKEN_SECRET}
+      REGISTRATION_MODE: ${REGISTRATION_MODE:-invitation}
+      SIGNUP_INVITE_CODE: ${SIGNUP_INVITE_CODE:?Set SIGNUP_INVITE_CODE}
+      METRICS_TOKEN: ${METRICS_TOKEN:?Set METRICS_TOKEN}
+      CORS_ORIGINS: https://${LIFEOS_DOMAIN:?Set LIFEOS_DOMAIN}
+      OBJECT_STORE_BACKEND: s3
+      S3_BUCKET: ${S3_BUCKET:?Set S3_BUCKET}
+      S3_REGION: ${S3_REGION:-}
+      S3_ENDPOINT_URL: ${S3_ENDPOINT_URL:-}
+      MODEL_PROVIDER: ${MODEL_PROVIDER:-none}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4.1-mini}
+      MODEL_DISCLOSURE_VERSION: ${MODEL_DISCLOSURE_VERSION:-openai-chat-completions-v1}
+      MODEL_DISCLOSURE_DATA: ${MODEL_DISCLOSURE_DATA:-Selected timeline item dates, titles, source-item IDs, and text for the requested review period.}
+      MODEL_DISCLOSURE_RETENTION: ${MODEL_DISCLOSURE_RETENTION:-Configure the provider's current retention and privacy terms before enabling external model use.}
+      MODEL_PRIVACY_URL: ${MODEL_PRIVACY_URL:-}
+      MODEL_INPUT_COST_PER_MILLION_USD: ${MODEL_INPUT_COST_PER_MILLION_USD:-0}
+      MODEL_OUTPUT_COST_PER_MILLION_USD: ${MODEL_OUTPUT_COST_PER_MILLION_USD:-0}
+      MODEL_MAX_COST_PER_CALL_USD: ${MODEL_MAX_COST_PER_CALL_USD:-0.10}
+    command:
+      - sh
+      - -c
+      - alembic upgrade head && uvicorn personal_ai_life_os.main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips=*
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/ready', timeout=3)"
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  db:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  caddy_data:
+  caddy_config:
+  postgres_data:

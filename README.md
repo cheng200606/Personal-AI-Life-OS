@@ -2,57 +2,81 @@
 
 **Your work and learning, captured with your consent, connected into useful personal memory.**
 
-An open source, cloud-first system for bringing together selected chat exports, photos, and agent memory files; turning them into a searchable timeline and linked notes; and helping you review progress and commitments. Obsidian is the portable Markdown interface.
+An Apache-2.0 open source project for importing selected chat exports, photos, and agent memory files; reviewing a source-linked timeline; preparing weekly reflections and reminders; and exporting portable Markdown for Obsidian.
 
-> **Status:** project foundation / MVP planning. The API currently has a health endpoint; source connectors and AI workflows are planned, not yet implemented.
+> **MVP status:** the local API, CLI, web workflow, review/reminder flow, photo processing, and production deployment templates are implemented. The project has not been deployed to a hosted environment or approved for real personal data. Follow the [release checklist](docs/operations/release-checklist.md) before inviting users.
 
-## Product decisions
+## What works
 
-- Direction: integrated research across a person's work, learning, and life.
-- Audience: broad, with individual privacy and portability as defaults.
-- License: Apache-2.0.
-- Architecture: cloud processing with explicit, user-controlled source sync.
-- Interfaces: web review experience plus local source and Obsidian workflows.
+- Select and preview Markdown or ChatGPT export files locally. Chat messages are not printed in preview; the upload contains only chosen conversations.
+- Import user-selected JPEG, PNG, or WebP photos through the web app. The server re-encodes images to strip metadata, extracts OCR text when Tesseract is available, and supports an optional, consent-gated external image description.
+- Browse and search an owner-scoped timeline with date and source filters, inspect the original source, and export stable Markdown files with conflict handling.
+- Generate an editable weekly review with source citations, save reminders, and export reviews as Markdown. Template reviews continue to work if external AI is unavailable.
+- Pause, resume, or revoke a source; download an account archive; delete a source or account.
+- Run with SQLite and local object storage for development, PostgreSQL in Compose, or a private S3-compatible store in a production deployment.
 
-## MVP path
+The current text search uses bounded SQL `LIKE` matching. Vector search, broad connectors, scheduled sync, automatic review delivery, and mobile capture are outside this MVP.
 
-1. Select files to sync: ChatGPT exports, photos, and agent `memory.md` files.
-2. Normalize source items with timestamps, provenance, and duplicate detection.
-3. Generate editable summaries, timeline entries, and review prompts.
-4. Prepare weekly reviews and reminders from user-approved action items.
-5. Export notes to an Obsidian vault as plain Markdown.
+## Local development
 
-The first release will not scrape private chats or monitor devices in the background. It will process only sources the user explicitly connects or imports. See the [MVP PRD](docs/product/prd.md) and [architecture](docs/architecture/overview.md).
+Requirements: Python 3.11+ with [uv](https://docs.astral.sh/uv/), and Node.js 24 with npm for the web client. Docker Desktop is optional for API-only work.
 
-## Development
-
-Requirements: Python 3.11+, Docker Compose.
+### API and CLI
 
 ```powershell
+uv sync --python 3.11 --all-groups
 Copy-Item .env.example .env
-docker compose up -d db redis
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install -e .
-uvicorn personal_ai_life_os.main:app --reload
+uv run uvicorn personal_ai_life_os.main:app --reload
 ```
 
-Health check: `http://127.0.0.1:8000/api/v1/health`.
+The API listens on `127.0.0.1:8000` by default and uses a local SQLite database. Interactive API documentation is at `http://127.0.0.1:8000/docs`. The `lifeos` CLI offers `register`, `login`, `whoami`, `preview`, `sync`, and `export`; run `uv run lifeos --help` for usage.
+
+### Web client
+
+In a second terminal:
+
+```powershell
+cd web
+npm ci
+npm run dev
+```
+
+Open `http://127.0.0.1:5173`. The development proxy connects to the local API.
+
+### PostgreSQL and web Compose stack
+
+```powershell
+docker compose -f docker-compose.yml up --build --detach --wait
+docker compose -f docker-compose.yml down
+```
+
+The API and web ports are bound to loopback. The API applies Alembic migrations before serving. Add `--volumes` to `down` only when intentionally removing the local test database and source files.
+
+## Verification and operations
+
+```powershell
+uv run ruff check .
+uv run pytest -q
+uv run python scripts/evaluate_reviews.py
+uv run python scripts/benchmark_mvp.py
+```
+
+The benchmark uses only generated data on local SQLite; it is not evidence of hosted PostgreSQL performance. For production configuration and database backup/restore procedures, see [deployment](docs/operations/deployment.md), [backup and restore](docs/operations/backup-restore.md), and the [support matrix](docs/operations/support-matrix.md).
 
 ## Repository map
 
-- `src/personal_ai_life_os/`: Python API foundation.
-- `docs/product/`: product requirements.
-- `docs/architecture/`: system and privacy design.
-- `docs/roadmap/`: milestones and starter issues.
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) and [Good First Issues](docs/contributing/good-first-issues.md).
+- `src/personal_ai_life_os/`: API, CLI, parsers, storage, and lifecycle services.
+- `web/`: React and TypeScript review client.
+- `migrations/`: versioned SQLAlchemy/Alembic schema changes.
+- `fixtures/synthetic/`: fabricated import and review evaluation data only.
+- `scripts/`: synthetic review evaluation and local performance benchmark.
+- `docs/`: product requirements, architecture, roadmap, operations, and contributor guidance.
 
 ## 中文简介
 
-Personal AI Life OS 是一个开源、云端优先的个人知识系统。用户可以选择同步聊天导出、照片和 agent 的 `memory.md`，将工作与学习经历整理成带来源的时间线、可编辑笔记、周期复盘和提醒，并导出为 Obsidian Markdown。
+Personal AI Life OS 是一个 Apache-2.0 开源的个人工作与学习记忆系统。用户明确选择资料后，可以导入 ChatGPT 导出、照片和 agent 的 `memory.md`，查看可追溯的时间线，生成可编辑周复盘与提醒，并导出 Obsidian Markdown。
 
-目前仓库处于项目框架阶段。API 只有健康检查；数据连接和 AI 工作流仍在路线图中。系统不会抓取私人聊天或在后台监控设备，只处理用户明确导入或授权的资料。
+MVP 的本地开发主流程已实现，但尚未部署到托管环境，也未通过真实用户私测准入。不要把真实个人资料放入未验证的共享部署；上线前请完成[发布清单](docs/operations/release-checklist.md)。
 
 ## License
 

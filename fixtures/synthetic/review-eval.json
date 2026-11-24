@@ -1,0 +1,716 @@
+{
+  "schema_version": 1,
+  "description": "Synthetic, deterministic review cases for citation, evidence support, conflicts, missing data, timezone boundaries, duplicates, and model fallback.",
+  "cases": [
+    {
+      "id": "review-01",
+      "category": "supported_fact",
+      "user_timezone": "Asia/Shanghai",
+      "period_start": "2026-11-16",
+      "period_end": "2026-11-17",
+      "expected_period_hours": 24,
+      "expected_fact_count": 1,
+      "items": [
+        {
+          "id": "source-1-a",
+          "title": "Synthetic decision 1",
+          "content_text": "The team selected option 1 after reviewing the synthetic prototype.",
+          "occurred_at": "2026-11-16T09:00:00+08:00",
+          "source_timezone": "Asia/Shanghai",
+          "source_locator": {
+            "line_start": 3,
+            "line_end": 4
+          }
+        }
+      ]
+    },
+    {
+      "id": "review-02",
+      "category": "supported_fact",
+      "user_timezone": "Asia/Shanghai",
+      "period_start": "2026-11-16",
+      "period_end": "2026-11-17",
+      "expected_period_hours": 24,
+      "expected_fact_count": 1,
+      "items": [
+        {
+          "id": "source-2-a",
+          "title": "Synthetic decision 2",
+          "content_text": "The team selected option 2 after reviewing the synthetic prototype.",
+          "occurred_at": "2026-11-16T09:00:00+08:00",
+          "source_timezone": "Asia/Shanghai",
+          "source_locator": {
+            "line_start": 6,
+            "line_end": 7
+          }
+        }
+      ]
+    },
+    {
+      "id": "review-03",
+      "category": "supported_fact",
+      "user_timezone": "Asia/Shanghai",
+      "period_start": "2026-11-16",
+      "period_end": "2026-11-17",
+      "expected_period_hours": 24,
+      "expected_fact_count": 1,
+      "items": [
+        {
+          "id": "source-3-a",
+          "title": "Synthetic decision 3",
+          "content_text": "The team selected option 3 after reviewing the synthetic prototype.",
+          "occurred_at": "2026-11-16T09:00:00+08:00",
+          "source_timezone": "Asia/Shanghai",
+          "source_locator": {
+            "line_start": 9,
+            "line_end": 10
+          }
+        }
+      ]
+    },
+    {
+      "id": "review-04",
+      "category": "supported_fact",
+      "user_timezone": "Asia/Shanghai",
+      "period_start": "2026-11-16",
+      "period_end": "2026-11-17",
+      "expected_period_hours": 24,
+      "expected_fact_count": 1,
+      "items": [
+        {
+          "id": "source-4-a",
+          "title": "Synthetic decision 4",
+          "content_text": "The team selected option 4 after reviewing the synthetic prototype.",
+          "occurred_at": "2026-11-16T09:00:00+08:00",
+          "source_timezone": "Asia/Shanghai",
+          "source_locator": {
+            "line_start": 12,
+            "line_end": 13
+          }
+        }
+      ]
+    },
+    {
+      "id": "review-05",
+      "category": "supported_fact",
+      "user_timezone": "Asia/Shanghai",
+      "period_start": "2026-11-16",
+      "period_end": "2026-11-17",
+      "expected_period_hours": 24,
+      "expected_fact_count": 1,
+      "items": [
+        {
+          "id": "source-5-a",
+          "title": "Synthetic decision 5",
+          "content_text": "The team selected option 5 after reviewing the synthetic prototype.",
+          "occurred_at": null,
+          "source_timezone": null,
+          "source_locator": {
+            "line_start": 15,
+            "line_end": 16
+          }
+        }
+      ]
+    },
+    {
+      "id": "review-06",
+      "category": "conflicting_sources",
+      "user_timezone": "Asia/Shanghai",
+      "period_start": "2026-11-16",
+      "period_end": "2026-11-17",
+      "expected_period_hours": 24,
+      "expected_fact_count": 2,
+      "items": [
+        {
+          "id": "source-6-a",
+          "title": "First estimate",
+          "content_text": "The synthetic delivery estimate is 6 days according to the Monday note.",
+          "occurred_at": "2026-11-16T09:00:00Z",
+          "source_timezone": "UTC",
+          "source_locator": {
+            "conversation_id": "conversation-6-a",
+            "message_id": "message-6-a"
+          }
+        },
+        {
+          "id": "source-6-b",
+          "title": "Updated estimate",
+          "content_text": "The synthetic delivery estimate is 7 days according to the Tuesday note.",
+          "occurred_at": "2026-11-17T09:00:00Z",
+          "source_timezone": "UTC",
+          "source_locator": {
+            "conversation_id": "conversation-6-b",
+            "message_id": "message-6-b"
+          }
+        }
+      ]
+    },
+    {
+      "id": "review-07",
+      "category": "conflicting_sources",
+      "user_timezone": "Asia/Shanghai",
+      "period_start": "2026-11-16",
+      "period_end": "2026-11-17",
+      "expected_period_hours": 24,
+      "expected_fact_count": 2,
+      "items": [
+        {
+          "id": "source-7-a",
+          "title": "First estimate",
+          "content_text": "The synthetic delivery estimate is 7 days according to the Monday note.",
+          "occurred_at": "2026-11-16T09:00:00Z",
+          "source_timezone": "UTC",
+          "source_locator": {
+            "conversation_id": "conversation-7-a",
+            "message_id": "message-7-a"
+          }
+        },
+        {
+          "id": "source-7-b",
+          "title": "Updated estimate",
+          "content_text": "The synthetic delivery estimate is 8 days according to the Tuesday note.",
+          "occurred_at": "2026-11-17T09:00:00Z",
+          "source_timezone": "UTC",
+          "source_locator": {
+            "conversation_id": "conversation-7-b",
+            "message_id": "message-7-b"
+          }
+        }
+      ]
+    },
+    {
+      "id": "review-08",
+      "category": "conflicting_sources",
+      "user_timezone": "Asia/Shanghai",
+      "period_start": "2026-11-16",
+      "period_end": "2026-11-17",
+      "expected_period_hours": 24,
+      "expected_fact_count": 2,
+      "items": [
+        {
+          "id": "source-8-a",
+          "title": "First estimate",
+          "content_text": "The synthetic delivery estimate is 8 days according to the Monday note.",
+          "occurred_at": "2026-11-16T09:00:00Z",
+          "source_timezone": "UTC",
+          "source_locator": {
+            "conversation_id": "conversation-8-a",
+            "message_id": "message-8-a"
+          }
+        },
+        {
+          "id": "source-8-b",
+          "title": "Updated estimate",
+          "content_text": "The synthetic delivery estimate is 9 days according to the Tuesday note.",
+          "occurred_at": "2026-11-17T09:00:00Z",
+          "source_timezone": "UTC",
+          "source_locator": {
+            "conversation_id": "conversation-8-b",
+            "message_id": "message-8-b"
+          }
+        }
+      ]
+    },
+    {
+      "id": "review-09",
+      "category": "conflicting_sources",
+      "user_timezone": "Asia/Shanghai",
+      "period_start": "2026-11-16",
+      "period_end": "2026-11-17",
+      "expected_period_hours": 24,
+      "expected_fact_count": 2,
+      "items": [
+        {
+          "id": "source-9-a",
+          "title": "First estimate",
+          "content_text": "The synthetic delivery estimate is 9 days according to the Monday note.",
+          "occurred_at": "2026-11-16T09:00:00Z",
+          "source_timezone": "UTC",
+          "source_locator": {
+            "conversation_id": "conversation-9-a",
+            "message_id": "message-9-a"
+          }
+        },
+        {
+          "id": "source-9-b",
+          "title": "Updated estimate",
+          "content_text": "The synthetic delivery estimate is 10 days according to the Tuesday note.",
+          "occurred_at": "2026-11-17T09:00:00Z",
+          "source_timezone": "UTC",
+          "source_locator": {
+            "conversation_id": "conversation-9-b",
+            "message_id": "message-9-b"
+          }
+        }
+      ]
+    },
+    {
+      "id": "review-10",
+      "category": "conflicting_sources",
+      "user_timezone": "Asia/Shanghai",
+      "period_start": "2026-11-16",
+      "period_end": "2026-11-17",
+      "expected_period_hours": 24,
+      "expected_fact_count": 2,
+      "items": [
+        {
+          "id": "source-10-a",
+          "title": "First estimate",
+          "content_text": "The synthetic delivery estimate is 10 days according to the Monday note.",
+          "occurred_at": "2026-11-16T09:00:00Z",
+          "source_timezone": "UTC",
+          "source_locator": {
+            "conversation_id": "conversation-10-a",
+            "message_id": "message-10-a"
+          }
+        },
+        {
+          "id": "source-10-b",
+          "title": "Updated estimate",
+          "content_text": "The synthetic delivery estimate is 11 days according to the Tuesday note.",
+          "occurred_at": "2026-11-17T09:00:00Z",
+          "source_timezone": "UTC",
+          "source_locator": {
+            "conversation_id": "conversation-10-b",
+            "message_id": "message-10-b"
+          }
+        }
+      ]
+    },
+    {
+      "id": "review-11",
+      "category": "insufficient_evidence",
+      "user_timezone": "Asia/Shanghai",
+      "period_start": "2026-11-16",
+      "period_end": "2026-11-17",
+      "expected_period_hours": 24,
+      "expected_fact_count": 0,
+      "items": []
+    },
+    {
+      "id": "review-12",
+      "category": "insufficient_evidence",
+      "user_timezone": "Asia/Shanghai",
+      "period_start": "2026-11-16",
+      "period_end": "2026-11-17",
+      "expected_period_hours": 24,
+      "expected_fact_count": 0,
+      "items": []
+    },
+    {
+      "id": "review-13",
+      "category": "insufficient_evidence",
+      "user_timezone": "Asia/Shanghai",
+      "period_start": "2026-11-16",
+      "period_end": "2026-11-17",
+      "expected_period_hours": 24,
+      "expected_fact_count": 0,
+      "items": []
+    },
+    {
+      "id": "review-14",
+      "category": "insufficient_evidence",
+      "user_timezone": "Asia/Shanghai",
+      "period_start": "2026-11-16",
+      "period_end": "2026-11-17",
+      "expected_period_hours": 24,
+      "expected_fact_count": 0,
+      "items": []
+    },
+    {
+      "id": "review-15",
+      "category": "insufficient_evidence",
+      "user_timezone": "Asia/Shanghai",
+      "period_start": "2026-11-16",
+      "period_end": "2026-11-17",
+      "expected_period_hours": 24,
+      "expected_fact_count": 0,
+      "items": []
+    },
+    {
+      "id": "review-16",
+      "category": "timezone_boundary",
+      "user_timezone": "America/Los_Angeles",
+      "period_start": "2026-03-08",
+      "period_end": "2026-03-09",
+      "expected_period_hours": 23,
+      "expected_fact_count": 1,
+      "items": [
+        {
+          "id": "source-16-a",
+          "title": "Local-day boundary",
+          "content_text": "The synthetic reminder is scheduled for the user's local calendar day.",
+          "occurred_at": null,
+          "source_timezone": null,
+          "source_locator": {
+            "line_start": 1,
+            "line_end": 2
+          }
+        }
+      ]
+    },
+    {
+      "id": "review-17",
+      "category": "timezone_boundary",
+      "user_timezone": "America/Los_Angeles",
+      "period_start": "2026-11-01",
+      "period_end": "2026-11-02",
+      "expected_period_hours": 25,
+      "expected_fact_count": 1,
+      "items": [
+        {
+          "id": "source-17-a",
+          "title": "Local-day boundary",
+          "content_text": "The synthetic reminder is scheduled for the user's local calendar day.",
+          "occurred_at": null,
+          "source_timezone": null,
+          "source_locator": {
+            "line_start": 1,
+            "line_end": 2
+          }
+        }
+      ]
+    },
+    {
+      "id": "review-18",
+      "category": "timezone_boundary",
+      "user_timezone": "Europe/Berlin",
+      "period_start": "2026-03-29",
+      "period_end": "2026-03-30",
+      "expected_period_hours": 23,
+      "expected_fact_count": 1,
+      "items": [
+        {
+          "id": "source-18-a",
+          "title": "Local-day boundary",
+          "content_text": "The synthetic reminder is scheduled for the user's local calendar day.",
+          "occurred_at": null,
+          "source_timezone": null,
+          "source_locator": {
+            "line_start": 1,
+            "line_end": 2
+          }
+        }
+      ]
+    },
+    {
+      "id": "review-19",
+      "category": "timezone_boundary",
+      "user_timezone": "Asia/Shanghai",
+      "period_start": "2026-11-16",
+      "period_end": "2026-11-17",
+      "expected_period_hours": 24,
+      "expected_fact_count": 1,
+      "items": [
+        {
+          "id": "source-19-a",
+          "title": "Local-day boundary",
+          "content_text": "The synthetic reminder is scheduled for the user's local calendar day.",
+          "occurred_at": null,
+          "source_timezone": null,
+          "source_locator": {
+            "line_start": 1,
+            "line_end": 2
+          }
+        }
+      ]
+    },
+    {
+      "id": "review-20",
+      "category": "timezone_boundary",
+      "user_timezone": "UTC",
+      "period_start": "2026-11-16",
+      "period_end": "2026-11-17",
+      "expected_period_hours": 24,
+      "expected_fact_count": 1,
+      "items": [
+        {
+          "id": "source-20-a",
+          "title": "Local-day boundary",
+          "content_text": "The synthetic reminder is scheduled for the user's local calendar day.",
+          "occurred_at": null,
+          "source_timezone": null,
+          "source_locator": {
+            "line_start": 1,
+            "line_end": 2
+          }
+        }
+      ]
+    },
+    {
+      "id": "review-21",
+      "category": "duplicate_source_items",
+      "user_timezone": "Asia/Shanghai",
+      "period_start": "2026-11-16",
+      "period_end": "2026-11-17",
+      "expected_period_hours": 24,
+      "expected_fact_count": 1,
+      "items": [
+        {
+          "id": "source-21-a",
+          "title": "Imported observation",
+          "content_text": "Duplicate synthetic observation 21: the prototype imported one unchanged Markdown item.",
+          "occurred_at": "2026-11-16T09:00:00Z",
+          "source_timezone": "UTC",
+          "source_locator": {
+            "line_start": 4,
+            "line_end": 5
+          }
+        },
+        {
+          "id": "source-21-b",
+          "title": "Copied observation",
+          "content_text": "  Duplicate synthetic observation 21: the prototype imported one unchanged Markdown item.  ",
+          "occurred_at": "2026-11-16T10:00:00Z",
+          "source_timezone": "UTC",
+          "source_locator": {
+            "line_start": 4,
+            "line_end": 5
+          }
+        }
+      ]
+    },
+    {
+      "id": "review-22",
+      "category": "duplicate_source_items",
+      "user_timezone": "Asia/Shanghai",
+      "period_start": "2026-11-16",
+      "period_end": "2026-11-17",
+      "expected_period_hours": 24,
+      "expected_fact_count": 1,
+      "items": [
+        {
+          "id": "source-22-a",
+          "title": "Imported observation",
+          "content_text": "Duplicate synthetic observation 22: the prototype imported one unchanged Markdown item.",
+          "occurred_at": "2026-11-16T09:00:00Z",
+          "source_timezone": "UTC",
+          "source_locator": {
+            "line_start": 4,
+            "line_end": 5
+          }
+        },
+        {
+          "id": "source-22-b",
+          "title": "Copied observation",
+          "content_text": "  Duplicate synthetic observation 22: the prototype imported one unchanged Markdown item.  ",
+          "occurred_at": "2026-11-16T10:00:00Z",
+          "source_timezone": "UTC",
+          "source_locator": {
+            "line_start": 4,
+            "line_end": 5
+          }
+        }
+      ]
+    },
+    {
+      "id": "review-23",
+      "category": "duplicate_source_items",
+      "user_timezone": "Asia/Shanghai",
+      "period_start": "2026-11-16",
+      "period_end": "2026-11-17",
+      "expected_period_hours": 24,
+      "expected_fact_count": 1,
+      "items": [
+        {
+          "id": "source-23-a",
+          "title": "Imported observation",
+          "content_text": "Duplicate synthetic observation 23: the prototype imported one unchanged Markdown item.",
+          "occurred_at": "2026-11-16T09:00:00Z",
+          "source_timezone": "UTC",
+          "source_locator": {
+            "line_start": 4,
+            "line_end": 5
+          }
+        },
+        {
+          "id": "source-23-b",
+          "title": "Copied observation",
+          "content_text": "  Duplicate synthetic observation 23: the prototype imported one unchanged Markdown item.  ",
+          "occurred_at": "2026-11-16T10:00:00Z",
+          "source_timezone": "UTC",
+          "source_locator": {
+            "line_start": 4,
+            "line_end": 5
+          }
+        }
+      ]
+    },
+    {
+      "id": "review-24",
+      "category": "duplicate_source_items",
+      "user_timezone": "Asia/Shanghai",
+      "period_start": "2026-11-16",
+      "period_end": "2026-11-17",
+      "expected_period_hours": 24,
+      "expected_fact_count": 1,
+      "items": [
+        {
+          "id": "source-24-a",
+          "title": "Imported observation",
+          "content_text": "Duplicate synthetic observation 24: the prototype imported one unchanged Markdown item.",
+          "occurred_at": "2026-11-16T09:00:00Z",
+          "source_timezone": "UTC",
+          "source_locator": {
+            "line_start": 4,
+            "line_end": 5
+          }
+        },
+        {
+          "id": "source-24-b",
+          "title": "Copied observation",
+          "content_text": "  Duplicate synthetic observation 24: the prototype imported one unchanged Markdown item.  ",
+          "occurred_at": "2026-11-16T10:00:00Z",
+          "source_timezone": "UTC",
+          "source_locator": {
+            "line_start": 4,
+            "line_end": 5
+          }
+        }
+      ]
+    },
+    {
+      "id": "review-25",
+      "category": "duplicate_source_items",
+      "user_timezone": "Asia/Shanghai",
+      "period_start": "2026-11-16",
+      "period_end": "2026-11-17",
+      "expected_period_hours": 24,
+      "expected_fact_count": 1,
+      "items": [
+        {
+          "id": "source-25-a",
+          "title": "Imported observation",
+          "content_text": "Duplicate synthetic observation 25: the prototype imported one unchanged Markdown item.",
+          "occurred_at": "2026-11-16T09:00:00Z",
+          "source_timezone": "UTC",
+          "source_locator": {
+            "line_start": 4,
+            "line_end": 5
+          }
+        },
+        {
+          "id": "source-25-b",
+          "title": "Copied observation",
+          "content_text": "  Duplicate synthetic observation 25: the prototype imported one unchanged Markdown item.  ",
+          "occurred_at": "2026-11-16T10:00:00Z",
+          "source_timezone": "UTC",
+          "source_locator": {
+            "line_start": 4,
+            "line_end": 5
+          }
+        }
+      ]
+    },
+    {
+      "id": "review-26",
+      "category": "model_failure_fallback",
+      "user_timezone": "Asia/Shanghai",
+      "period_start": "2026-11-16",
+      "period_end": "2026-11-17",
+      "expected_period_hours": 24,
+      "expected_fact_count": 1,
+      "items": [
+        {
+          "id": "source-26-a",
+          "title": "Fallback evidence",
+          "content_text": "When the synthetic model request failed, the template retained this evidence for case 26.",
+          "occurred_at": "2026-11-16T09:00:00Z",
+          "source_timezone": "UTC",
+          "source_locator": {
+            "conversation_id": "conversation-26",
+            "message_id": "message-26"
+          }
+        }
+      ]
+    },
+    {
+      "id": "review-27",
+      "category": "model_failure_fallback",
+      "user_timezone": "Asia/Shanghai",
+      "period_start": "2026-11-16",
+      "period_end": "2026-11-17",
+      "expected_period_hours": 24,
+      "expected_fact_count": 1,
+      "items": [
+        {
+          "id": "source-27-a",
+          "title": "Fallback evidence",
+          "content_text": "When the synthetic model request failed, the template retained this evidence for case 27.",
+          "occurred_at": "2026-11-16T09:00:00Z",
+          "source_timezone": "UTC",
+          "source_locator": {
+            "conversation_id": "conversation-27",
+            "message_id": "message-27"
+          }
+        }
+      ]
+    },
+    {
+      "id": "review-28",
+      "category": "model_failure_fallback",
+      "user_timezone": "Asia/Shanghai",
+      "period_start": "2026-11-16",
+      "period_end": "2026-11-17",
+      "expected_period_hours": 24,
+      "expected_fact_count": 1,
+      "items": [
+        {
+          "id": "source-28-a",
+          "title": "Fallback evidence",
+          "content_text": "When the synthetic model request failed, the template retained this evidence for case 28.",
+          "occurred_at": "2026-11-16T09:00:00Z",
+          "source_timezone": "UTC",
+          "source_locator": {
+            "conversation_id": "conversation-28",
+            "message_id": "message-28"
+          }
+        }
+      ]
+    },
+    {
+      "id": "review-29",
+      "category": "model_failure_fallback",
+      "user_timezone": "Asia/Shanghai",
+      "period_start": "2026-11-16",
+      "period_end": "2026-11-17",
+      "expected_period_hours": 24,
+      "expected_fact_count": 1,
+      "items": [
+        {
+          "id": "source-29-a",
+          "title": "Fallback evidence",
+          "content_text": "When the synthetic model request failed, the template retained this evidence for case 29.",
+          "occurred_at": "2026-11-16T09:00:00Z",
+          "source_timezone": "UTC",
+          "source_locator": {
+            "conversation_id": "conversation-29",
+            "message_id": "message-29"
+          }
+        }
+      ]
+    },
+    {
+      "id": "review-30",
+      "category": "model_failure_fallback",
+      "user_timezone": "Asia/Shanghai",
+      "period_start": "2026-11-16",
+      "period_end": "2026-11-17",
+      "expected_period_hours": 24,
+      "expected_fact_count": 1,
+      "items": [
+        {
+          "id": "source-30-a",
+          "title": "Fallback evidence",
+          "content_text": "When the synthetic model request failed, the template retained this evidence for case 30.",
+          "occurred_at": "2026-11-16T09:00:00Z",
+          "source_timezone": "UTC",
+          "source_locator": {
+            "conversation_id": "conversation-30",
+            "message_id": "message-30"
+          }
+        }
+      ]
+    }
+  ]
+}

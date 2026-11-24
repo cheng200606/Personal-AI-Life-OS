@@ -1,0 +1,11 @@
+{
+  "memory_sections": 3,
+  "chat_conversations": 2,
+  "chat_messages": 4,
+  "messages_without_timestamp": 1,
+  "duplicate_reimport_adds_items": 0,
+  "expected_decisions": [
+    "Keep structured records in Postgres and make approved notes portable as Markdown."
+  ],
+  "notes": "The instruction-like user message is source text and must never be executed."
+}

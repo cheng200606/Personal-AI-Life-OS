@@ -1,35 +1,43 @@
 # Development Milestones
 
-## M0 — Repository foundation (current)
+This status reflects repository implementation and local checks. It does not mean a hosted system, real-user beta, or production security review has been completed.
 
-- Apache-2.0 license, contribution/security docs, and product/architecture decisions.
-- FastAPI package, health route, Docker Compose dependencies, and container recipe.
-- Source consent, provenance, and data portability principles.
+## M0 — Repository foundation: implemented
 
-## M1 — Local import and persistence
+- Apache-2.0 license, contribution/security docs, product/architecture decisions, synthetic fixtures, Ruff/pytest, and GitHub Actions.
+- FastAPI startup, health/readiness routes, Python containers, local Compose stack, and web build/lint CI steps.
+- Windows API-only development and Linux CI paths are documented. Compose syntax is checked; local container execution remains dependent on an available Docker engine.
 
-- Add SQLAlchemy models and Alembic migrations for users, source connections, sync runs, and source items.
-- Implement authenticated upload and an allowlisted local sync CLI.
-- Parse ChatGPT export JSON and Markdown memory files.
-- Add content hashing, duplicate detection, retryable sync runs, and deletion.
+## M1 — Local import and persistence: implemented
 
-## M2 — Searchable timeline
+- SQLAlchemy models, Alembic migrations, owner-scoped authentication and APIs, local/S3 storage adapters.
+- CLI preview, explicit conversation selection, minimized ChatGPT upload, sync, retry-safe hashing, and conflict-safe Markdown export.
+- UTF-8 Markdown and supported ChatGPT JSON parsers; source and account deletion with durable tombstone replay.
+- Automated tests cover parser behavior, idempotency, owner isolation, import/export, deletion, and account archive.
 
-- Add photo metadata and optional image description pipeline.
-- Add editable event and decision drafts with source citations.
-- Add basic web UI for source management and timeline review.
-- Add text and semantic search.
+## M2a — Searchable timeline and text Alpha: implemented
 
-## M3 — Reviews and reminders
+- React/TypeScript web application for authentication, selected imports, source management, timeline filtering/search, provenance inspection, and Markdown export.
+- CLI and web paths work without Swagger. Keyword search is a bounded SQL `LIKE` query; full-text and semantic search remain post-MVP.
 
-- Generate an on-demand weekly review from confirmed records.
-- Let users edit/save reviews and confirm action items.
-- Add in-app reminders with due date, snooze, and completion state.
-- Add Obsidian Markdown export with conflict-safe writes.
+## M3 — Reviews and reminders: implemented
 
-## M4 — Private beta readiness
+- On-demand weekly review, cited template output, optional consent-gated OpenAI review, output citation validation, model-failure fallback, and Markdown export.
+- User can edit/confirm review text and create, complete, snooze, or cancel reminders.
+- Synthetic fixture includes 30 review cases. Local deterministic evidence evaluation and API tests verify citation and fallback behavior.
 
-- Add robust authentication, tenant isolation checks, audit events, retention controls, export, and account deletion.
-- Document model providers, data flows, backup deletion windows, and deployment.
-- Add observability that avoids logging source content.
-- Invite early users after security and data-control workflows are implemented.
+## M4 — Text private beta readiness: implementation present; hosted gates pending
+
+- Invitation-only production configuration, private S3 adapter, Caddy TLS template, account archive/delete, metrics, backup/restore scripts, and operational checklists are in the repository.
+- Two-owner API tests cover isolation; source/account deletion replay is exercised with synthetic data.
+- **Pending:** actual TLS/DNS and cloud configuration, private bucket policy and lifecycle verification, hosted database/object authorization tests, production dashboards, backup restore exercise, and review by an operator before inviting real users.
+
+## M2b — Photos and complete MVP: implementation present; release gates pending
+
+- User-selected JPEG, PNG, and WebP imports, local preview, capture date/timezone form, metadata stripping, OCR, searchable content, source references, and optional consent-gated photo description.
+- Synthetic tests cover EXIF/GPS stripping, OCR behavior, descriptions, search, access scope, and deletion.
+- **Pending:** deployment-specific OCR/container exercise, hosted privacy and deletion verification, and the shared release gates in M4.
+
+## Release and follow-up
+
+Use the [release checklist](../operations/release-checklist.md) and [support matrix](../operations/support-matrix.md) to review evidence and limits. Invite users only after hosted acceptance checks and recovery exercises have actually passed. Scheduled imports/reviews, more connectors, full-text/vector search, and mobile capture remain post-MVP.

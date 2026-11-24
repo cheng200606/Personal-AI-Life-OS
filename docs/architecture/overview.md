@@ -2,64 +2,59 @@
 
 ## Principles
 
-1. The user chooses which sources enter the system.
-2. Original material stays immutable; parsed records and AI notes are separate outputs.
-3. Generated claims point back to source items.
-4. Markdown export keeps notes portable.
-5. Connectors and model providers use replaceable interfaces.
+1. Users choose the source files and conversations that enter the system.
+2. Imported originals are immutable; parsed items and generated notes are separate records.
+3. Generated facts include source-item references and remain drafts until the user confirms them.
+4. Markdown and JSON exports keep user data portable.
+5. Storage and optional model providers sit behind narrow interfaces.
 
 ## MVP topology
 
 ```text
-Selected folders / exports
-  └─ Local sync CLI (allowlist, scan, hash, preview)
-       └─ HTTPS upload API
-            ├─ FastAPI service
-            ├─ PostgreSQL + pgvector (metadata, records, embeddings)
-            ├─ Object storage (original files and derived thumbnails)
-            └─ Redis job queue (parsing, image descriptions, reviews)
-
-Web review UI ── HTTPS API
-Obsidian vault ◀── Markdown export / local sync
+Selected local files
+  ├─ lifeos CLI: preview, select, authenticate, sync, export
+  └─ React web app: select chats/photos, review timeline, manage data
+       └─ FastAPI API
+            ├─ PostgreSQL (Compose/production) or SQLite (API-only development)
+            ├─ Local object store (development) or private S3-compatible bucket
+            ├─ synchronous bounded parsers (Markdown, ChatGPT JSON, photos/OCR)
+            └─ optional consent-gated model calls
 ```
 
 ## Stack
 
-- **API:** Python 3.11+, FastAPI, Pydantic.
-- **Primary store:** PostgreSQL; pgvector for semantic search when that feature lands.
-- **Async work:** Redis-backed queue for ingestion and scheduled jobs.
-- **Original files:** S3-compatible object storage in hosted deployments; local filesystem adapter for development.
-- **Web client:** React + TypeScript, planned as a separate `web/` app.
-- **Local integration:** Python CLI for explicit file selection and Obsidian export.
-- **Packaging:** Docker Compose for local dependencies; container image for the API.
+- **API:** Python 3.11+, FastAPI, Pydantic, SQLAlchemy, Alembic.
+- **Database:** PostgreSQL for Compose/hosted configuration; SQLite for local API-only development. Vector search is not part of the MVP implementation.
+- **Storage:** local filesystem adapter for development and an S3-compatible adapter for production templates.
+- **Web:** React, TypeScript, Vite, served by Nginx in the production Compose template.
+- **Local integration:** Python CLI for explicit file selection, preview, sync, and Obsidian export.
+- **Deployment:** Docker Compose with Caddy TLS proxy; operator-supplied database, private bucket, secrets, and backups.
 
-This repository currently implements only the FastAPI shell and health route. Persistence, authentication, upload handling, and the web app are roadmap work.
+There is no Redis queue in the current MVP. Upload parsing and OCR run synchronously inside the API with input limits. Longer or background processing requires a later durable worker design.
 
 ## Data flow
 
-1. **Authorize:** select source files and confirm a sync preview.
-2. **Discover:** scan only configured paths; record metadata and content hash.
-3. **Upload:** send changed files over HTTPS to the authenticated API; allow sync to stop/resume.
-4. **Normalize:** parse source items and timestamps while retaining source identity and parser version.
-5. **Enrich:** queued workers produce searchable text, optional image descriptions, and draft summaries.
-6. **Review:** present drafts with provenance; the user confirms, edits, or dismisses them.
-7. **Reflect:** prepare a cited review from confirmed events and pending commitments.
-8. **Export:** emit approved notes as Markdown with stable IDs and source references.
+1. **Select:** user chooses a Markdown file, ChatGPT export conversations, or individual photo. Chat selection and minimization happen in the browser or CLI before upload.
+2. **Authorize:** create a source record with selected scope and consent version; source access is tied to the authenticated owner.
+3. **Import:** upload through a size-limited endpoint. The API hashes the selected bytes, stores the original or sanitized photo, parses records, and records line/message/file provenance.
+4. **Review:** date/source filters and bounded keyword search show imported records. Raw file access goes through an owner-scoped API endpoint.
+5. **Reflect:** an on-demand review uses confirmed timeline records. Template output copies source text with citations. Optional external output is validated against accessible source IDs and falls back to the template on provider failure.
+6. **Confirm and export:** the user edits and confirms review text, creates or updates reminders, and exports notes to Markdown. CLI export uses stable IDs and detects hand-edited files.
+7. **Delete:** source or account deletion records a durable tombstone before removing data. Startup replays tombstones before serving a restored database.
 
-## Initial entities
+## Data entities
 
-- **User / Workspace:** owner and isolation boundary.
-- **SourceConnection:** connector type, selected scope, consent version, sync state, and revocation time.
-- **SourceItem:** immutable source identity, timestamps, content hash, storage key, and parser metadata.
-- **MemoryRecord:** generated or user-authored fact, event, decision, or note with provenance and review status.
-- **Review:** date range, draft, included record IDs, and user-edited final text.
-- **Reminder:** user-confirmed action, due time, status, and originating records.
-- **SyncRun:** start/end time, counts, failures, and resumable cursor.
+- **User:** authentication, timezone, current model consent, and deletion state.
+- **SourceConnection:** source type, selected scope, status, consent version, and sync history.
+- **SyncRun:** upload checksum, parser version, outcome, item counts, and stored-object reference.
+- **SourceItem:** owner/source, original locator, content digest, event time, timezone, parsed text, and metadata.
+- **MemoryRecord:** user-confirmed notes or confirmed photo descriptions with source links.
+- **Review:** requested period, cited source items, model metadata, draft and user-confirmed text.
+- **Reminder:** user-owned action with optional source and memory references.
+- **ModelRun:** provider, model, purpose, status, prompt version, latency, and token counts without source content.
 
-All user-owned records need an owner/workspace key and must be scoped at query boundaries.
+## Search and limits
 
-## Deployment and interfaces
+Timeline queries use owner, date, source, current/deleted state, and simple case-insensitive SQL `LIKE` matching. There is no full-text or semantic index. Text upload is capped at 5 MB per file and photo upload at 20 MB by default. Photo decoding is limited to 40 megapixels. A review period is limited to 500 source items.
 
-Local development uses Docker Compose Postgres and Redis. Hosted deployment adds a web client, authenticated API, managed PostgreSQL, private object storage, workers, secret management, backups, and monitoring.
-
-Define narrow interfaces around `SourceConnector`, `Parser`, `ObjectStore`, `JobQueue`, `ModelProvider`, and `MarkdownExporter`. The initial import path does not need direct ChatGPT or photo-provider API access: local export files are the first connector.
+See the [support matrix](../operations/support-matrix.md), [privacy design and current limits](privacy.md), and [deployment guide](../operations/deployment.md).
