@@ -1,8 +1,8 @@
 # Local and CI MVP Verification Record
 
 **Date:** 2026-11-25
-**Implementation commit:** `798d8af` (`feat: implement Personal AI Life OS MVP`)
-**CI verification head:** `15d027e`; [run `45455673155`](https://github.com/cheng200606/Personal-AI-Life-OS/actions/runs/45455673155) passed on this revision
+**Implementation commit:** `9fe60f4` (`feat: add recoverable worker and photo batch imports`)
+**CI verification head:** `9fe60f4`; [run `45465885873`](https://github.com/cheng200606/Personal-AI-Life-OS/actions/runs/45465885873) passed on this revision
 **Data:** generated fixtures and generated benchmark rows only; no personal source material
 **Runtime:** Windows, local SQLite, FastAPI `TestClient`, Node/npm; production credentials unavailable
 
@@ -11,13 +11,13 @@
 | Check | Result |
 | --- | --- |
 | `uv run ruff check .` | Pass |
-| `uv run pytest -q` | 40 passed; one upstream Starlette deprecation warning about `httpx` in `TestClient` |
+| GitHub Actions `uv run pytest` (Python 3.11 and 3.12) | 40 passed; one upstream test warning |
 | `uv run python scripts/evaluate_reviews.py` | 30 cases; source location 100%; evidence support 100%; unsupported claims 0 |
 | `uv run python scripts/benchmark_mvp.py` | Pass against local targets; measurements below |
-| `uv run alembic upgrade head` on a fresh temporary SQLite database, then `uv run alembic check` | Pass; all four migrations applied, no model/schema drift |
+| `uv run alembic upgrade head` in the Docker Compose CI smoke | Pass; all five migrations applied before readiness |
 | `npm run lint` in `web/` | Pass |
 | `npm run build` in `web/` | Pass |
-| GitHub Actions run `45455673155` | Pass: Linux Python 3.11/3.12 lint and tests, Web lint/build, Docker Compose image build, startup, readiness checks, and cleanup. The runner reported a non-blocking Node.js 20 action-runtime deprecation notice. |
+| GitHub Actions run `45465885873` | Pass: Linux Python 3.11/3.12 lint and tests, Web lint/build, Docker Compose image build, startup, readiness checks, and cleanup. The runner reports a non-blocking Node.js 20 action-runtime deprecation notice. |
 | `docker compose --env-file .env.example -f docker-compose.yml config --quiet` | Pass |
 | `docker compose --env-file .env.production.example -f docker-compose.production.yml config --quiet` | Pass |
 | `bash -n scripts/backup-production.sh scripts/restore-production.sh` | Pass |
