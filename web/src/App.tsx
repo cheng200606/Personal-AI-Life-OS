@@ -192,6 +192,8 @@ function App() {
   }
 
   async function previewFiles(fileList: FileList | null, fromDirectory = false) {
+    setFile(null); setPhotoFiles([]); setPhotoPreview('')
+    setConversations([]); setSelected([]); setError(''); setNotice('')
     const selectedFiles = Array.from(fileList || [])
     const imageFiles = selectedFiles.filter((selectedFile) => /\.(jpe?g|png|webp)$/i.test(selectedFile.name))
     const skipped = selectedFiles.length - imageFiles.length
@@ -208,7 +210,6 @@ function App() {
     const next = nextFiles[0] || null
     setFile(next); setPhotoFiles(nextFiles.length && nextFiles.every((selectedFile) => /\.(jpe?g|png|webp)$/i.test(selectedFile.name)) ? nextFiles : [])
     setPhotoPreview(next && /\.(jpe?g|png|webp)$/i.test(next.name) ? URL.createObjectURL(next) : '')
-    setConversations([]); setSelected([]); setError('')
     if (fromDirectory && skipped) setNotice(`${skipped} non-photo file(s) in the folder were ignored.`)
     if (nextFiles.length === 1 && next?.name.toLowerCase().endsWith('.json')) {
       try { setConversations(parseConversations(await next.text())) } catch (e) { setError(e instanceof Error ? e.message : 'Could not preview this file.') }

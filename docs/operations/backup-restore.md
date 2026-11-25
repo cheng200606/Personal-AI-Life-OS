@@ -22,6 +22,8 @@ bash scripts/restore-production.sh 20261125T120000Z
 
 After restore, confirm health/readiness, login, timeline and archive behavior using a synthetic account. Confirm each known deleted account/source remains absent and its object prefix has no readable versions. Review logs for deletion replay and migration errors. Record recovery time and data-loss window.
 
+For a database-only rehearsal on a disposable development Compose project, start the API and database with `docker compose -p lifeos-iteration up --build --detach --wait api` and run `uv run python scripts/verify_database_restore.py` from the repository root. It restores into a freshly created test database and checks both a deletion made after the snapshot and an untouched object against the live development object store.
+
 ## Important recovery boundary
 
 The API persists deletion tombstones in the configured object bucket and replays them after a **database-only restore**, which is covered by automated synthetic tests. The scripts also snapshot and restore S3 objects. If both the database and primary bucket are lost, tombstones created after the restored bucket snapshot may be absent. Before a real-user launch, configure continuous cross-failure-domain preservation of the deletion ledger (or an equivalent independent deletion journal), and exercise that failure mode. A daily snapshot alone does not guarantee that deletions after its timestamp will be replayed.

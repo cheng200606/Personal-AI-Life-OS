@@ -4,13 +4,18 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import tempfile
 import time
+from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
+from sqlalchemy import create_engine
+from sqlalchemy.engine import make_url
+from sqlalchemy.schema import CreateSchema, DropSchema
 
 from personal_ai_life_os.config import Settings
 from personal_ai_life_os.main import create_app
@@ -22,17 +27,47 @@ def _p95(values: list[float]) -> float:
     return ordered[max(0, math.ceil(len(ordered) * 0.95) - 1)]
 
 
+@contextmanager
+def _benchmark_database(root: Path):
+    database_url = os.getenv("LIFEOS_BENCHMARK_POSTGRES_URL")
+    if not database_url:
+        yield f"sqlite+pysqlite:///{(root / 'benchmark.sqlite3').as_posix()}", "SQLite"
+        return
+    base_url = make_url(database_url)
+    if base_url.get_backend_name() != "postgresql":
+        raise ValueError("LIFEOS_BENCHMARK_POSTGRES_URL must reference a disposable PostgreSQL database.")
+    schema = "lifeos_benchmark_" + uuid4().hex
+    engine = create_engine(base_url)
+    try:
+        with engine.begin() as connection:
+            connection.execute(CreateSchema(schema))
+        try:
+            scoped_url = base_url.update_query_dict({"options": "-csearch_path=" + schema})
+            yield scoped_url.render_as_string(hide_password=False), "PostgreSQL"
+        finally:
+            with engine.begin() as connection:
+                connection.execute(DropSchema(schema, cascade=True))
+    finally:
+        engine.dispose()
+
+
 def run() -> dict:
-    with tempfile.TemporaryDirectory(prefix="lifeos-benchmark-") as temporary:
+    with (
+        tempfile.TemporaryDirectory(prefix="lifeos-benchmark-") as temporary,
+        _benchmark_database(Path(temporary)) as (database_url, backend),
+    ):
         root = Path(temporary)
         config = Settings(
             _env_file=None,
             app_env="test",
             data_dir=root / "data",
-            database_url=f"sqlite+pysqlite:///{(root / 'benchmark.sqlite3').as_posix()}",
+            database_url=database_url,
             auto_create_schema=True,
             access_token_secret="synthetic-benchmark-secret-at-least-32-characters",
             registration_mode="open",
+            object_store_backend="local",
+            model_provider="none",
+            processing_mode="inline",
         )
         with TestClient(create_app(config)) as client:
             registration = client.post(
@@ -143,7 +178,7 @@ def run() -> dict:
             query_p95 = {name: round(_p95(values), 2) for name, values in query_samples.items()}
             import_p95 = round(_p95(import_samples), 2)
             return {
-                "environment": "local SQLite + FastAPI TestClient; synthetic only",
+                "environment": f"{backend} + in-process FastAPI TestClient; synthetic only",
                 "timeline_rows_before_imports": 10_000,
                 "timeline_query_samples_each": 30,
                 "timeline_p95_ms": query_p95,

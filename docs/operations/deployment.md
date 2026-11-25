@@ -12,6 +12,16 @@ The production Compose file is a deployment template. It has not been applied to
 
 ## Configure and start
 
+Record the operator handoff before starting hosted acceptance. Use the release record for the following fields and keep credentials in the selected secret store.
+
+| Field | Evidence to record |
+| --- | --- |
+| Ownership | Deployment owner, backup/restore operator, release reviewer, and approved budget |
+| Candidate | Source revision, image identifiers, migration head, and evidence location |
+| Network | Staging hostname, certificate issuer, and private database endpoint or network reference |
+| Object data | Primary and backup bucket identifiers, encryption, version and expiry policies, and independent deletion-journal location |
+| Exposure | Invitation-only setting, synthetic test accounts, external AI state, and authority to enable real-data enrollment |
+
 1. Copy `.env.production.example` to `.env` on the deployment host and replace every placeholder. Set `DATABASE_URL` credentials to match the Postgres variables. Use unique random values for the token, invitation, and metrics secrets. URL-encode reserved characters in the database URL password.
 2. Set `LIFEOS_DOMAIN` to the DNS name, `S3_BUCKET` to the private object bucket, and `BACKUP_S3_URI` to a different encrypted bucket/prefix.
 3. Before setting `MODEL_PROVIDER=openai`, provide a real `OPENAI_API_KEY`, current provider privacy URL, accurate retention/data disclosure, and current input/output price per million tokens for the configured model. The default zero prices keep external inference unavailable. Keep `MODEL_MAX_COST_PER_CALL_USD` at or below the approved budget.

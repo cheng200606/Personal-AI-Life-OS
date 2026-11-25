@@ -43,6 +43,7 @@ class RetryableJobError(Exception):
 @dataclass(frozen=True, slots=True)
 class JobEnvelope:
     id: str
+    claim_id: str
     owner_id: str
     source_id: str | None
     source_item_id: str | None
@@ -281,11 +282,13 @@ def _claim(session_factory: sessionmaker, worker_id: str, config: Settings) -> J
             return None
         job.status = "running"
         job.attempt_count += 1
-        job.worker_id = worker_id
+        claim_id = f"{worker_id}:{uuid4().hex}"
+        job.worker_id = claim_id
         job.lease_expires_at = now + timedelta(seconds=config.worker_lease_seconds)
         session.commit()
         return JobEnvelope(
             id=job.id,
+            claim_id=claim_id,
             owner_id=job.owner_id,
             source_id=job.source_id,
             source_item_id=job.source_item_id,
@@ -296,6 +299,17 @@ def _claim(session_factory: sessionmaker, worker_id: str, config: Settings) -> J
             attempt_count=job.attempt_count,
             max_attempts=job.max_attempts,
         )
+
+
+def _current_claim(session: Session, job: JobEnvelope) -> BackgroundJob | None:
+    statement = select(BackgroundJob).where(
+        BackgroundJob.id == job.id,
+        BackgroundJob.status == "running",
+        BackgroundJob.worker_id == job.claim_id,
+    )
+    if session.get_bind().dialect.name == "postgresql":
+        statement = statement.with_for_update()
+    return session.scalar(statement)
 
 
 def _fail_terminal(session: Session, job: BackgroundJob, error_code: str) -> None:
@@ -367,6 +381,8 @@ def _execute_photo_ocr(
     session_factory: sessionmaker, store: ObjectStore, job: JobEnvelope
 ) -> dict:
     with session_factory() as session:
+        if _current_claim(session, job) is None:
+            return {"cancelled": True}
         item = session.get(SourceItem, job.source_item_id) if job.source_item_id else None
         source = session.get(SourceConnection, job.source_id) if job.source_id else None
         if item is None or item.deleted_at is not None or source is None or source.status != "active":
@@ -384,7 +400,7 @@ def _execute_photo_ocr(
 
     now = utcnow()
     with session_factory() as session:
-        current_job = session.get(BackgroundJob, job.id)
+        current_job = _current_claim(session, job)
         item = session.get(SourceItem, job.source_item_id) if job.source_item_id else None
         source = session.get(SourceConnection, job.source_id) if job.source_id else None
         if current_job is None or current_job.status != "running":
@@ -412,8 +428,15 @@ def _execute_photo_ocr(
                 run.error_code = None
                 run.completed_at = now
                 source.last_sync_at = now
+        result = {"source_item_id": job.source_item_id, "ocr_status": status}
+        current_job.status = "completed"
+        current_job.result_json = result
+        current_job.error_code = None
+        current_job.completed_at = now
+        current_job.lease_expires_at = None
+        current_job.worker_id = None
         session.commit()
-    return {"source_item_id": job.source_item_id, "ocr_status": status}
+    return result
 
 
 def _execute_photo_description(
@@ -422,6 +445,8 @@ def _execute_photo_description(
     from personal_ai_life_os.services.model_usage import model_cost_usd
 
     with session_factory() as session:
+        if _current_claim(session, job) is None:
+            return {"cancelled": True}
         item = session.get(SourceItem, job.source_item_id) if job.source_item_id else None
         source = session.get(SourceConnection, job.source_id) if job.source_id else None
         user = session.get(User, job.owner_id)
@@ -442,7 +467,7 @@ def _execute_photo_description(
             and user.deletion_requested_at is None
         )
         if not consented:
-            job_row = session.get(BackgroundJob, job.id)
+            job_row = _current_claim(session, job)
             item.metadata_json = {**item.metadata_json, "description_status": "cancelled"}
             if job_row:
                 job_row.status = "cancelled"
@@ -529,7 +554,7 @@ def _execute_photo_description(
 
     now = utcnow()
     with session_factory() as session:
-        current_job = session.get(BackgroundJob, job.id)
+        current_job = _current_claim(session, job)
         item = session.get(SourceItem, job.source_item_id) if job.source_item_id else None
         source = session.get(SourceConnection, job.source_id) if job.source_id else None
         user = session.get(User, job.owner_id)
@@ -600,6 +625,8 @@ def _execute_weekly_review(session_factory: sessionmaker, job: JobEnvelope, conf
     from personal_ai_life_os.services.model_usage import model_cost_usd, model_rates_configured
 
     with session_factory() as session:
+        if _current_claim(session, job) is None:
+            return {"cancelled": True}
         review = session.get(Review, job.review_id) if job.review_id else None
         user = session.get(User, job.owner_id)
         if review is None or review.status != "processing" or user is None:
@@ -680,7 +707,7 @@ def _execute_weekly_review(session_factory: sessionmaker, job: JobEnvelope, conf
     rendered = _render_markdown(draft, items)
     now = utcnow()
     with session_factory() as session:
-        current_job = session.get(BackgroundJob, job.id)
+        current_job = _current_claim(session, job)
         review = session.get(Review, review_id)
         if current_job is None or current_job.status != "running":
             return {"cancelled": True}
@@ -742,7 +769,7 @@ def run_background_job_once(
             raise RetryableJobError("unsupported_job_type")
     except RetryableJobError as error:
         with session_factory() as session:
-            current = session.get(BackgroundJob, job.id)
+            current = _current_claim(session, job)
             if current is None or current.status != "running":
                 return True
             if current.attempt_count >= current.max_attempts:
@@ -757,7 +784,7 @@ def run_background_job_once(
         logger.warning("Background job attempt failed (%s).", error.code)
     except Exception as error:  # noqa: BLE001 - keep a failed task recoverable and hide content from logs.
         with session_factory() as session:
-            current = session.get(BackgroundJob, job.id)
+            current = _current_claim(session, job)
             if current is None or current.status != "running":
                 return True
             code = "worker_error"
@@ -773,7 +800,7 @@ def run_background_job_once(
         logger.warning("Background job attempt failed (%s).", type(error).__name__)
     else:
         with session_factory() as session:
-            current = session.get(BackgroundJob, job.id)
+            current = _current_claim(session, job)
             if current is not None and current.status == "running":
                 current.status = "completed"
                 current.result_json = result

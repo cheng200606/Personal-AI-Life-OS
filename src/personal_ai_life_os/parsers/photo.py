@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import shutil
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -128,6 +129,8 @@ def extract_photo_text(image: Image.Image) -> tuple[str, str]:
         text = pytesseract.image_to_string(image, lang="eng+chi_sim", timeout=20).strip()
     except (pytesseract.TesseractError, OSError, RuntimeError, ValueError):
         return "", "failed"
+    # Tesseract can separate adjacent Han glyphs, which breaks keyword lookup.
+    text = re.sub(r"(?<=[\u3400-\u9fff])[ \u3000](?=[\u3400-\u9fff])", "", text)
     return text, "extracted" if text else "no_text"
 
 

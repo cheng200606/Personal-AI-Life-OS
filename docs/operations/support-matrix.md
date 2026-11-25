@@ -14,6 +14,8 @@ The current limits are enforced by the API and parsers where possible. They shou
 
 ## Verification fixtures
 
+Photo file and directory selection is available in the web importer. The CLI imports Markdown and ChatGPT JSON, and both interfaces can export a photo timeline entry as Markdown. Deleting an item can remove the shared imported original and other entries created from that original. The web action identifies it as deleting the imported source. Photo-description and weekly review flows have their own confirmation controls. A general editor and dismissal workflow for timeline suggestions remains a product backlog item.
+
 `fixtures/synthetic/` contains fabricated Markdown and ChatGPT exports. It contains no user data. Run:
 
 ```powershell

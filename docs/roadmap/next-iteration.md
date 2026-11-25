@@ -53,3 +53,13 @@
 - **小样本不足以判断竞争力。** 同时保留成功、放弃、返工时间和计量分母。指标未达时优先修复最早且影响最大的一环，用同一任务复测。
 
 候选版本须通过 A1–A4。真实资料准入须通过 B1–B3 并附可复核记录。发生跨账号访问、删除失效、恢复后资料复活或不可恢复的数据损坏时，维持合成环境并修复复测。用户结果决定 C1 后的扩容与功能投资。 [发布清单](../operations/release-checklist.md)
+
+## 5. 本轮执行记录
+
+- A1 使用 Edge 和合成数据跑通两条 Playwright 用例中的文本主流程。可以在 `web/` 运行 `npm run test:e2e`。默认使用 Playwright Chromium，安装 Edge 的机器可用 `LIFEOS_BROWSER_CHANNEL=msedge`。
+- A2 用 Compose PostgreSQL 16 通过 6 项回归。覆盖竞争者拒领、过期重领与迟到结果隔离、暂停/撤权/删除、领取进程退出后由另一个进程接手，以及模拟外部模型过期时回退并仅保留一笔估算费用记录。运行 `uv run pytest -q tests/test_worker_claim.py`，用 `LIFEOS_WORKER_TEST_DATABASE_URL` 指向独立测试库可切换到 PostgreSQL。
+- A3 浏览器已验证目录上限、超限后选区清空、跳过非图片与逐项失败。Compose 目标镜像实测合成 JPEG 的中英文搜索、存储 GPS 移除和账号删除通过。可用 `uv run python scripts/verify_photo_ocr.py <含中英文的字体文件>` 复测。CLI 导出后给文件加上合成用户编辑，重复导出保留修改。Obsidian 1.12.7 在临时 Vault 中打开了同一份文件并显示该编辑。 [Obsidian URI 文档](https://obsidian.md/help/uri)
+- A4 已在支持矩阵说明照片入口和共享原件删除边界。通用建议编辑与拒绝的后续验收应覆盖草稿状态、保留来源引用，以及拒绝后从待审列表移除并可复核。
+- B0 待确定托管环境、预算和运维负责人。暂沿用仓库的 Caddy、私有 PostgreSQL、S3 兼容对象存储和独立备份架构。环境与候选版本确认后记录域名、存储生命周期、删除台账负责人和试用开关，再执行 B1–B3。C1 以真实资料准入与参与者同意为前置条件。
+- B2 在合成 Compose 环境中用 `pg_dump` 和 `pg_restore` 还原独立 PostgreSQL 数据库。快照之后的删除在回放后生效，未删原件仍可读取，还原和回放用时 3.09 秒。可用 `uv run python scripts/verify_database_restore.py` 复测。双重故障、独立台账及托管保留窗口仍待实配验收。
+- B3 在本地 PostgreSQL 16 和进程内 FastAPI 上跑通容量预演。三类时间线查询各 30 次，对 1 万条记录的 P95 为 42.53–80.58 毫秒。30 次 500 条导入的 P95 为 6.57 秒，单文件 50,498 字节。设定 `LIFEOS_BENCHMARK_POSTGRES_URL` 后运行 `uv run python scripts/benchmark_mvp.py`，脚本使用并清理独立 schema。托管环境的真实网络、告警及回滚仍待验收。
