@@ -92,7 +92,12 @@ def create_app(
         elif request.method == "POST" and route.startswith("/api/v1/sources/") and route.endswith("/imports"):
             key, limit, window = "import", 30, 60
         client_host = request.client.host if request.client else "unknown"
-        if key:
+        if key == "import" and not application.state.settings.imports_enabled:
+            response = JSONResponse(
+                status_code=503,
+                content={"error": {"code": "imports_paused", "message": "Uploads are temporarily paused."}},
+            )
+        elif key:
             events = application.state.rate_events[(key, client_host)]
             instant = monotonic()
             while events and events[0] <= instant - window:
@@ -103,7 +108,6 @@ def create_app(
                     content={"error": {"code": "rate_limited", "message": "Too many requests. Wait before trying again."}},
                     headers={"Retry-After": str(window)},
                 )
-                application.state.request_samples.append(("rate_limit", 0.0, 429))
             else:
                 events.append(instant)
                 response = None
@@ -111,11 +115,14 @@ def create_app(
             response = None
 
         started = perf_counter()
-        if response is None:
-            response = await call_next(request)
-            latency_ms = (perf_counter() - started) * 1000
-            route_template = getattr(request.scope.get("route"), "path", "unmatched")
-            application.state.request_samples.append((route_template, latency_ms, response.status_code))
+        try:
+            if response is None:
+                response = await call_next(request)
+        except Exception:
+            application.state.request_samples.append((monotonic(), (perf_counter() - started) * 1000, 500))
+            raise
+        latency_ms = (perf_counter() - started) * 1000
+        application.state.request_samples.append((monotonic(), latency_ms, response.status_code))
         response.headers.setdefault("X-Content-Type-Options", "nosniff")
         response.headers.setdefault("X-Frame-Options", "DENY")
         response.headers.setdefault("Referrer-Policy", "no-referrer")

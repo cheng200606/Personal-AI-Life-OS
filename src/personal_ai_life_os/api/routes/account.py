@@ -232,7 +232,13 @@ def delete_account(request: Request, user: DeletionUserDep, session: SessionDep)
     if user.deletion_requested_at is None:
         store: ObjectStore = request.app.state.object_store
         tombstone = _json_bytes({"owner_id": user.id, "requested_at": datetime.now(UTC).isoformat()})
-        store.write_deletion_tombstone(user.id, tombstone)
+        try:
+            store.write_deletion_tombstone(user.id, tombstone)
+        except Exception as error:
+            raise HTTPException(
+                503,
+                detail={"code": "account_tombstone_pending", "message": "Deletion could not be durably recorded. Retry shortly."},
+            ) from error
         user.deletion_requested_at = datetime.now(UTC)
         cancel_all_jobs_for_owner(session, user.id)
         for source in session.scalars(

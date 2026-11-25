@@ -36,12 +36,16 @@ class Settings(BaseSettings):
 
     max_text_upload_bytes: int = 5 * 1024 * 1024
     max_photo_upload_bytes: int = 20 * 1024 * 1024
+    imports_enabled: bool = True
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
 
     object_store_backend: Literal["local", "s3"] = "local"
     s3_bucket: str | None = None
     s3_region: str | None = None
     s3_endpoint_url: str | None = None
+    s3_deletion_journal_bucket: str | None = None
+    s3_deletion_journal_region: str | None = None
+    s3_deletion_journal_endpoint_url: str | None = None
 
     model_provider: Literal["none", "openai"] = "none"
     openai_api_key: str | None = None
@@ -61,6 +65,8 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_production_configuration(self) -> "Settings":
+        if self.s3_deletion_journal_bucket and self.s3_deletion_journal_bucket == self.s3_bucket:
+            raise ValueError("S3_DELETION_JOURNAL_BUCKET must differ from S3_BUCKET.")
         if self.app_env != "production":
             return self
         if self.access_token_secret == "development-only-change-this-secret":
@@ -81,6 +87,8 @@ class Settings(BaseSettings):
             raise ValueError("METRICS_TOKEN must be set to a unique value of at least 32 characters in production.")
         if self.object_store_backend != "s3" or not self.s3_bucket:
             raise ValueError("Production requires a private S3-compatible object store and S3_BUCKET.")
+        if not self.s3_deletion_journal_bucket:
+            raise ValueError("Production requires S3_DELETION_JOURNAL_BUCKET for deletion recovery.")
         if self.model_provider == "openai" and not self.openai_api_key:
             raise ValueError("OPENAI_API_KEY is required when MODEL_PROVIDER=openai.")
         if self.model_provider == "openai" and (not self.model_privacy_url or len(self.model_disclosure_retention) < 20):

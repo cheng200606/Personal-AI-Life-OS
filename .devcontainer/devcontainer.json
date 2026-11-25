@@ -1,9 +1,13 @@
 {
   "name": "Personal AI Life OS",
-  "image": "mcr.microsoft.com/devcontainers/base:ubuntu-24.04",
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
   "features": {
-    "ghcr.io/devcontainers/features/docker-in-docker:2": {
-      "version": "latest"
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {},
+    "ghcr.io/devcontainers/features/sshd:1": {},
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "24"
     }
   },
   "hostRequirements": {
@@ -22,7 +26,8 @@
   "otherPortsAttributes": {
     "onAutoForward": "ignore"
   },
-  "postCreateCommand": "docker compose -f docker-compose.yml -f docker-compose.codespaces.yml up --build --detach --wait",
-  "postStartCommand": "docker compose -f docker-compose.yml -f docker-compose.codespaces.yml up --detach --wait",
+  "postCreateCommand": "bash .devcontainer/setup.sh",
+  "postStartCommand": "docker compose -p lifeos-iteration -f docker-compose.yml -f docker-compose.codespaces.yml up --build --detach --wait",
+  "waitFor": "postStartCommand",
   "remoteUser": "vscode"
 }

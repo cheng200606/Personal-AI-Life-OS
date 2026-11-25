@@ -63,3 +63,8 @@
 - B0 待确定托管环境、预算和运维负责人。暂沿用仓库的 Caddy、私有 PostgreSQL、S3 兼容对象存储和独立备份架构。环境与候选版本确认后记录域名、存储生命周期、删除台账负责人和试用开关，再执行 B1–B3。C1 以真实资料准入与参与者同意为前置条件。
 - B2 在合成 Compose 环境中用 `pg_dump` 和 `pg_restore` 还原独立 PostgreSQL 数据库。快照之后的删除在回放后生效，未删原件仍可读取，还原和回放用时 3.09 秒。可用 `uv run python scripts/verify_database_restore.py` 复测。双重故障、独立台账及托管保留窗口仍待实配验收。
 - B3 在本地 PostgreSQL 16 和进程内 FastAPI 上跑通容量预演。三类时间线查询各 30 次，对 1 万条记录的 P95 为 42.53–80.58 毫秒。30 次 500 条导入的 P95 为 6.57 秒，单文件 50,498 字节。设定 `LIFEOS_BENCHMARK_POSTGRES_URL` 后运行 `uv run python scripts/benchmark_mvp.py`，脚本使用并清理独立 schema。托管环境的真实网络、告警及回滚仍待验收。
+- 2026-11-25 选用 GitHub Codespaces + Dev Container 作为隔离开发和合成验收环境。配置复用现有 PostgreSQL/API/Web 栈，转发私有 Web 端口，关闭外部模型。通过该环境复测迁移、浏览器、worker、OCR 和数据库恢复后记录实际云端结果。真实资料私测仍按 B1–B3 和 C1 执行。 [Codespaces 验收命令](../operations/deployment.md#synthetic-acceptance-in-codespaces)
+- 2026-11-25 云端合成验收使用 `f0cb777` 加工作区配置，在临时 4 核 Codespace 重建并启动三项 Compose 服务。GitHub 端口列表确认 5173 为私有，未授权 HTTPS 返回 401，授权的就绪请求返回 200。Codespace 内通过 47 项 Python、2 项 Chromium 和 6 项 PostgreSQL worker 测试。另通过私有 HTTPS 入口运行 2 项浏览器流程。Linux Noto CJK SC 复测覆盖中英文检索、去除 GPS 和测试账号删除。
+- 同一 Codespace 完成 PostgreSQL 快照恢复和删除回放，用时 2.82 秒。快照之后删除的条目保持不可读，未删对照原件仍可读。工作区配置已加入 SSH 服务并独立构建镜像成功。云端演练使用开发存储和合成数据，正式对象桶生命周期和双重故障仍按 B1、B2 验收。
+- Codespace 内 PostgreSQL 与进程内 FastAPI 容量预演达标。三类时间线查询各 30 次，对 1 万条记录的 P95 为 39.79–86.11 毫秒。30 次 500 条导入的 P95 为 5.34 秒。私有 HTTPS 的端到端功能另外验证，耗时未纳入这组容量数据。
+- 临时 Codespace 已在验收后停止，GitHub CLI 确认状态为 `Shutdown`。

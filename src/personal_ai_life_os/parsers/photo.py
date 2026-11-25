@@ -126,7 +126,7 @@ def extract_photo_text(image: Image.Image) -> tuple[str, str]:
     if not shutil.which("tesseract"):
         return "", "unavailable"
     try:
-        text = pytesseract.image_to_string(image, lang="eng+chi_sim", timeout=20).strip()
+        text = pytesseract.image_to_string(image, lang="chi_sim+eng", timeout=20).strip()
     except (pytesseract.TesseractError, OSError, RuntimeError, ValueError):
         return "", "failed"
     # Tesseract can separate adjacent Han glyphs, which breaks keyword lookup.

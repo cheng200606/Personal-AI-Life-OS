@@ -19,9 +19,13 @@ The current text search uses bounded SQL `LIKE` matching. Vector search, broad c
 
 ## Local development
 
-Requirements: Python 3.11+ with [uv](https://docs.astral.sh/uv/), and Node.js 24 with npm for the web client. Docker Desktop is optional for API-only work.
+### GitHub Codespaces
+
+Create or rebuild a Codespace using this repository's Dev Container configuration. It installs the locked Python and Node dependencies and starts the development stack. Open the **Web client** on private port 5173 in the Ports panel. The stack uses synthetic data for acceptance exercises and disables external AI. See the [Codespaces verification commands](docs/operations/deployment.md#synthetic-acceptance-in-codespaces). [GitHub Dev Containers](https://docs.github.com/en/codespaces/setting-up-your-project-for-codespaces/adding-a-dev-container-configuration/introduction-to-dev-containers)
 
 ### API and CLI
+
+For development on your own machine, install Python 3.11+ with [uv](https://docs.astral.sh/uv/) and Node.js 24 with npm for the Web client. Docker Desktop is optional for API-only work.
 
 ```powershell
 uv sync --python 3.11 --all-groups

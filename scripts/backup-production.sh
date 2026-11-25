@@ -11,6 +11,7 @@ if [[ -f "$ROOT/.env" ]]; then
 fi
 
 : "${S3_BUCKET:?Set S3_BUCKET in .env}"
+: "${S3_DELETION_JOURNAL_BUCKET:?Set S3_DELETION_JOURNAL_BUCKET in .env}"
 : "${BACKUP_S3_URI:?Set BACKUP_S3_URI in .env}"
 : "${POSTGRES_DB:?Set POSTGRES_DB in .env}"
 : "${POSTGRES_USER:?Set POSTGRES_USER in .env}"
@@ -21,6 +22,10 @@ command -v aws >/dev/null || { echo "AWS CLI is required." >&2; exit 1; }
 BACKUP_BUCKET="${BACKUP_S3_URI#s3://}"
 BACKUP_BUCKET="${BACKUP_BUCKET%%/*}"
 [[ "$BACKUP_BUCKET" != "$S3_BUCKET" ]] || { echo "Use a separate backup bucket." >&2; exit 1; }
+[[ "$S3_DELETION_JOURNAL_BUCKET" != "$S3_BUCKET" && "$S3_DELETION_JOURNAL_BUCKET" != "$BACKUP_BUCKET" ]] || {
+  echo "Use a separate deletion journal bucket." >&2
+  exit 1
+}
 
 BACKUP_ID="$(date -u +%Y%m%dT%H%M%SZ)"
 DESTINATION="${BACKUP_S3_URI%/}/$BACKUP_ID"
@@ -41,7 +46,7 @@ cat > "$TEMP_DIR/manifest.json" <<EOF
   "created_at_utc": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
   "database_format": "pg_dump custom",
   "object_bucket": "$S3_BUCKET",
-  "deletion_tombstones_included": true
+  "deletion_journal_bucket": "$S3_DELETION_JOURNAL_BUCKET"
 }
 EOF
 aws s3 cp "$TEMP_DIR/manifest.json" "$DESTINATION/manifest.json" --sse AES256 --only-show-errors

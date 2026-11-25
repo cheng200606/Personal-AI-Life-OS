@@ -2,5 +2,11 @@
 # forwarded Codespaces tunnel can reach the Vite dev server.
 services:
   web:
+    environment:
+      CODESPACE_NAME: ${CODESPACE_NAME:-}
+      GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN: ${GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN:-app.github.dev}
     ports: !override
       - "5173:5173"
+  api:
+    environment:
+      MODEL_PROVIDER: none

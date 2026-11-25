@@ -4,12 +4,13 @@ import hmac
 import json
 from datetime import UTC, datetime, timedelta
 from math import ceil
+from time import monotonic
 
 from fastapi import APIRouter, HTTPException, Request
 from sqlalchemy import func, select
 
 from personal_ai_life_os.api.deps import SessionDep
-from personal_ai_life_os.models import BackgroundJob, ModelRun, SyncRun
+from personal_ai_life_os.models import BackgroundJob, ModelRun, SourceConnection, SyncRun, User
 from personal_ai_life_os.storage import ObjectStore
 
 router = APIRouter(tags=["operations"])
@@ -26,7 +27,9 @@ def metrics(request: Request, session: SessionDep) -> dict:
     ):
         raise HTTPException(401, detail={"code": "metrics_auth_required", "message": "A metrics token is required."})
 
-    samples = list(request.app.state.request_samples)
+    window_seconds = 600
+    window_start = monotonic() - window_seconds
+    samples = [sample for sample in list(request.app.state.request_samples) if sample[0] >= window_start]
     latencies = sorted(sample[1] for sample in samples)
     p95_latency = latencies[min(len(latencies) - 1, ceil(len(latencies) * 0.95) - 1)] if latencies else 0
     cutoff = datetime.now(UTC) - timedelta(hours=24)
@@ -74,18 +77,28 @@ def metrics(request: Request, session: SessionDep) -> dict:
     tombstones = [json.loads(payload) for _, payload in store.list_deletion_tombstones()]
     pending_deletions = sum(1 for item in tombstones if not item.get("completed_at"))
     durations = []
+    oldest_pending_age = 0.0
     for item in tombstones:
-        if item.get("requested_at") and item.get("completed_at"):
-            try:
-                requested = datetime.fromisoformat(item["requested_at"])
+        try:
+            requested = datetime.fromisoformat(item["requested_at"])
+            if item.get("completed_at"):
                 completed = datetime.fromisoformat(item["completed_at"])
                 durations.append(max(0, (completed - requested).total_seconds()))
-            except (ValueError, TypeError):
-                continue
+            else:
+                oldest_pending_age = max(oldest_pending_age, (now - requested).total_seconds())
+        except (KeyError, ValueError, TypeError):
+            continue
+    deleting_sources = session.scalar(
+        select(func.count()).select_from(SourceConnection).where(SourceConnection.status == "deleting")
+    ) or 0
+    deleting_accounts = session.scalar(
+        select(func.count()).select_from(User).where(User.deletion_requested_at.is_not(None))
+    ) or 0
     durations.sort()
     deletion_p95 = durations[min(len(durations) - 1, ceil(len(durations) * 0.95) - 1)] if durations else 0
     return {
-        "window_seconds": 600,
+        "window_seconds": window_seconds,
+        "imports_enabled": request.app.state.settings.imports_enabled,
         "requests_sampled": len(samples),
         "http_5xx_sampled": sum(1 for sample in samples if sample[2] >= 500),
         "request_latency_p95_ms": round(p95_latency, 2),
@@ -96,6 +109,9 @@ def metrics(request: Request, session: SessionDep) -> dict:
         "jobs_failed_24h": failed_jobs_24h,
         "job_queue_oldest_seconds": round(oldest_queue_age, 2),
         "deletions_pending": pending_deletions,
+        "deletion_oldest_pending_seconds": round(oldest_pending_age, 2),
+        "deletion_sources_blocked": deleting_sources,
+        "deletion_accounts_blocked": deleting_accounts,
         "deletion_duration_p95_seconds": round(deletion_p95, 2),
         "external_model_calls": model_calls,
         "external_review_calls": len(review_runs),

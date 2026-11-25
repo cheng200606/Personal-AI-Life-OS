@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { expect, test } from '@playwright/test'
@@ -7,7 +8,7 @@ test('selects, traces, reviews, exports and revokes synthetic content', async ({
   await page.keyboard.press('Tab')
   await expect(page.getByLabel('Email')).toBeFocused()
   await page.getByRole('button', { name: 'Create an account' }).click()
-  await page.getByLabel('Email').fill('browser-workflow@example.test')
+  await page.getByLabel('Email').fill(`browser-workflow-${randomUUID()}@example.test`)
   await page.getByLabel('Password').fill('synthetic-browser-password')
   await page.getByRole('button', { name: 'Create account', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Timeline' })).toBeVisible()
@@ -64,7 +65,7 @@ test('selects, traces, reviews, exports and revokes synthetic content', async ({
 test('enforces photo directory limits and reports partial imports', async ({ page }, testInfo) => {
   await page.goto('/')
   await page.getByRole('button', { name: 'Create an account' }).click()
-  await page.getByLabel('Email').fill('browser-photos@example.test')
+  await page.getByLabel('Email').fill(`browser-photos-${randomUUID()}@example.test`)
   await page.getByLabel('Password').fill('synthetic-browser-password')
   await page.getByRole('button', { name: 'Create account', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Timeline' })).toBeVisible()

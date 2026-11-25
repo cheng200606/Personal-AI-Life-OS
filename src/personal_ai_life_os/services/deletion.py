@@ -170,8 +170,8 @@ def replay_deletion_tombstones(session_factory: sessionmaker, store: ObjectStore
                         session.delete(source)
                         session.commit()
                 store.delete_source_objects(owner_id, source_id)
-                completed = {**document, "completed_at": datetime.now(UTC).isoformat()}
-                store.write_source_deletion_tombstone(owner_id, source_id, json.dumps(completed).encode("utf-8"))
+                if not document.get("completed_at"):
+                    complete_source_deletion(store, owner_id, source_id, document)
             else:
                 if user is not None:
                     user.deletion_requested_at = user.deletion_requested_at or datetime.now(UTC)
@@ -203,8 +203,8 @@ def replay_deletion_tombstones(session_factory: sessionmaker, store: ObjectStore
                     session.commit()
                 else:
                     store.delete_owner_objects(owner_id)
-                completed = {**document, "completed_at": datetime.now(UTC).isoformat()}
-                store.write_deletion_tombstone(owner_id, json.dumps(completed).encode("utf-8"))
+                if not document.get("completed_at"):
+                    complete_account_deletion(store, owner_id, document)
         replayed += 1
     if replayed:
         logger.info("Replayed %d data deletion tombstone(s).", replayed)

@@ -131,6 +131,14 @@ class S3ObjectStore:
             region_name=config.s3_region,
             endpoint_url=config.s3_endpoint_url or None,
         )
+        self.journal_bucket = config.s3_deletion_journal_bucket or self.bucket
+        self.journal_client = self.client
+        if config.s3_deletion_journal_region or config.s3_deletion_journal_endpoint_url:
+            self.journal_client = boto3.client(
+                "s3",
+                region_name=config.s3_deletion_journal_region or config.s3_region,
+                endpoint_url=config.s3_deletion_journal_endpoint_url or config.s3_endpoint_url or None,
+            )
 
     def put(self, key: str, content: bytes, content_type: str) -> None:
         _validate_key(key)
@@ -144,7 +152,11 @@ class S3ObjectStore:
 
     def get(self, key: str) -> bytes:
         _validate_key(key)
-        response = self.client.get_object(Bucket=self.bucket, Key=key)
+        return self._read_object(self.client, self.bucket, key)
+
+    @staticmethod
+    def _read_object(client, bucket: str, key: str) -> bytes:
+        response = client.get_object(Bucket=bucket, Key=key)
         try:
             return response["Body"].read()
         finally:
@@ -152,39 +164,50 @@ class S3ObjectStore:
 
     def delete(self, key: str) -> None:
         _validate_key(key)
-        paginator = self.client.get_paginator("list_object_versions")
-        versions = []
-        for page in paginator.paginate(Bucket=self.bucket, Prefix=key):
-            versions.extend(
-                {"Key": item["Key"], "VersionId": item["VersionId"]}
-                for item in page.get("Versions", []) + page.get("DeleteMarkers", [])
-                if item["Key"] == key
-            )
-        for offset in range(0, len(versions), 1000):
-            result = self.client.delete_objects(
-                Bucket=self.bucket,
-                Delete={"Objects": versions[offset : offset + 1000], "Quiet": True},
-            )
-            if result.get("Errors"):
-                raise RuntimeError("Object storage could not fully remove a selected source file.")
-        self.client.delete_object(Bucket=self.bucket, Key=key)
+        if not self._delete_versions(key, exact=True):
+            self._delete_unversioned(key)
+
+    def _delete_unversioned(self, key: str) -> None:
+        result = self.client.delete_object(Bucket=self.bucket, Key=key)
+        if result.get("DeleteMarker"):
+            self.client.delete_object(Bucket=self.bucket, Key=key, VersionId=result["VersionId"])
 
     def write_deletion_tombstone(self, owner_id: str, payload: bytes) -> None:
         UUID(owner_id)
-        self.put(f".deletion-tombstones/accounts/{owner_id}.json", payload, "application/json")
+        self._write_journal(f".deletion-tombstones/accounts/{owner_id}.json", payload)
 
     def write_source_deletion_tombstone(self, owner_id: str, source_id: str, payload: bytes) -> None:
         UUID(owner_id)
         UUID(source_id)
-        self.put(f".deletion-tombstones/sources/{source_id}.json", payload, "application/json")
+        self._write_journal(f".deletion-tombstones/sources/{source_id}.json", payload)
+
+    def _write_journal(self, key: str, payload: bytes) -> None:
+        self.journal_client.put_object(
+            Bucket=self.journal_bucket, Key=key, Body=payload,
+            ContentType="application/json", ServerSideEncryption="AES256",
+        )
 
     def list_deletion_tombstones(self) -> list[tuple[str, bytes]]:
-        paginator = self.client.get_paginator("list_objects_v2")
+        journal = dict(self._list_tombstones(self.journal_client, self.journal_bucket))
+        if self.journal_bucket != self.bucket or self.journal_client is not self.client:
+            # Backfill records written before the independent journal was configured.
+            paginator = self.client.get_paginator("list_objects_v2")
+            for page in paginator.paginate(Bucket=self.bucket, Prefix=".deletion-tombstones/"):
+                for item in page.get("Contents", []):
+                    key = item["Key"]
+                    if key not in journal:
+                        payload = self.get(key)
+                        self._write_journal(key, payload)
+                        journal[key] = payload
+        return list(journal.items())
+
+    def _list_tombstones(self, client, bucket: str) -> list[tuple[str, bytes]]:
+        paginator = client.get_paginator("list_objects_v2")
         result: list[tuple[str, bytes]] = []
-        for page in paginator.paginate(Bucket=self.bucket, Prefix=".deletion-tombstones/"):
+        for page in paginator.paginate(Bucket=bucket, Prefix=".deletion-tombstones/"):
             for item in page.get("Contents", []):
                 key = item["Key"]
-                result.append((key, self.get(key)))
+                result.append((key, self._read_object(client, bucket, key)))
         return result
 
     def delete_owner_objects(self, owner_id: str) -> None:
@@ -197,30 +220,30 @@ class S3ObjectStore:
         self._delete_prefix(f"owners/{safe_owner}/sources/{safe_source}/")
 
     def _delete_prefix(self, prefix: str) -> None:
-        paginator = self.client.get_paginator("list_object_versions")
-        for page in paginator.paginate(Bucket=self.bucket, Prefix=prefix):
+        self._delete_versions(prefix)
+        # Some compatible stores omit unversioned keys from list_object_versions.
+        while objects := self.client.list_objects_v2(Bucket=self.bucket, Prefix=prefix).get("Contents"):
+            for item in objects:
+                self._delete_unversioned(item["Key"])
+
+    def _delete_versions(self, prefix: str, *, exact: bool = False) -> bool:
+        removed = False
+        while True:
+            # Refresh the first page after deletion. Continuation markers may have been deleted.
+            page = self.client.list_object_versions(Bucket=self.bucket, Prefix=prefix)
             objects = [
                 {"Key": item["Key"], "VersionId": item["VersionId"]}
                 for item in page.get("Versions", []) + page.get("DeleteMarkers", [])
+                if not exact or item["Key"] == prefix
             ]
-            for offset in range(0, len(objects), 1000):
-                response = self.client.delete_objects(
-                    Bucket=self.bucket,
-                    Delete={"Objects": objects[offset : offset + 1000], "Quiet": True},
-                )
-                if response.get("Errors"):
-                    raise RuntimeError("Object storage could not fully remove this account's files.")
-        # Buckets without versioning do not return content from list_object_versions.
-        paginator = self.client.get_paginator("list_objects_v2")
-        for page in paginator.paginate(Bucket=self.bucket, Prefix=prefix):
-            objects = [{"Key": item["Key"]} for item in page.get("Contents", [])]
-            for offset in range(0, len(objects), 1000):
-                response = self.client.delete_objects(
-                    Bucket=self.bucket,
-                    Delete={"Objects": objects[offset : offset + 1000], "Quiet": True},
-                )
-                if response.get("Errors"):
-                    raise RuntimeError("Object storage could not fully remove this account's files.")
+            if not objects:
+                return removed
+            response = self.client.delete_objects(
+                Bucket=self.bucket, Delete={"Objects": objects, "Quiet": True},
+            )
+            if response.get("Errors"):
+                raise RuntimeError("Object storage could not fully remove selected files.")
+            removed = True
 
 
 def create_object_store(config: Settings) -> ObjectStore:

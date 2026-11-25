@@ -2,12 +2,30 @@
 
 The production Compose file is a deployment template. It has not been applied to a cloud account or validated with a live domain, certificate, object bucket, or real credentials.
 
+## Synthetic acceptance in Codespaces
+
+The [Dev Container configuration](../../.devcontainer/devcontainer.json) starts the development Compose stack as `lifeos-iteration`. Keep port 5173 private in the Ports panel. The Web client sends API requests through the same forwarded origin. API and PostgreSQL ports stay available to the Codespace terminal on loopback. [GitHub port forwarding](https://docs.github.com/en/codespaces/developing-in-a-codespace/forwarding-ports-in-your-codespace)
+
+Run these checks from the repository root after startup:
+
+```bash
+curl --fail http://127.0.0.1:8000/api/v1/ready
+uv run pytest -q
+(cd web && npm run test:e2e)
+LIFEOS_WORKER_TEST_DATABASE_URL=postgresql+psycopg://lifeos:lifeos_dev@127.0.0.1:5432/lifeos uv run pytest -q tests/test_worker_claim.py
+uv run python scripts/verify_photo_ocr.py /usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc --font-index 2
+uv run python scripts/verify_database_restore.py
+```
+
+The worker tests create and remove dedicated PostgreSQL schemas. The restore rehearsal uses a separate database within the development project. Record cloud session evidence against the branch and revision in the [iteration record](../roadmap/next-iteration.md). The real-data beta uses the separately approved environment and release checklist.
+
 ## Prerequisites
 
 - A Linux host with Docker Engine and Docker Compose plugin.
 - A DNS name pointed at the host, with inbound TCP ports 80 and 443 available for Caddy TLS.
 - A private S3-compatible bucket and application credentials with object read/write/delete and version-list/delete permissions. Enable server-side encryption and block public access.
 - An encrypted backup bucket in a separate account or failure domain, with a 35-day lifecycle for dated backup prefixes.
+- A private encrypted deletion journal bucket outside the primary storage failure domain. Give the API list, read and write access to the journal prefix, and reserve its deletion permissions for a separate operator.
 - A protected PostgreSQL backup/restore plan, encrypted host volumes, log retention rules, and monitoring.
 
 ## Configure and start
@@ -23,7 +41,7 @@ Record the operator handoff before starting hosted acceptance. Use the release r
 | Exposure | Invitation-only setting, synthetic test accounts, external AI state, and authority to enable real-data enrollment |
 
 1. Copy `.env.production.example` to `.env` on the deployment host and replace every placeholder. Set `DATABASE_URL` credentials to match the Postgres variables. Use unique random values for the token, invitation, and metrics secrets. URL-encode reserved characters in the database URL password.
-2. Set `LIFEOS_DOMAIN` to the DNS name, `S3_BUCKET` to the private object bucket, and `BACKUP_S3_URI` to a different encrypted bucket/prefix.
+2. Set `LIFEOS_DOMAIN` to the DNS name, `S3_BUCKET` to the private object bucket, `BACKUP_S3_URI` to a different encrypted bucket/prefix, and `S3_DELETION_JOURNAL_BUCKET` to the third bucket. Set the journal region or endpoint overrides if the journal needs a different connection.
 3. Before setting `MODEL_PROVIDER=openai`, provide a real `OPENAI_API_KEY`, current provider privacy URL, accurate retention/data disclosure, and current input/output price per million tokens for the configured model. The default zero prices keep external inference unavailable. Keep `MODEL_MAX_COST_PER_CALL_USD` at or below the approved budget.
 4. Confirm `.env` is not committed and is readable only by the deployment operator.
 5. Check Compose interpolation, then start the stack:
@@ -44,7 +62,7 @@ Record the operator handoff before starting hosted acceptance. Use the release r
 
 The application uses private object keys and server-side `AES256` encryption for writes. Give the API only the permissions needed to get/put/delete objects, list a bucket and object versions, and remove object versions. Configure the bucket with public access blocked. If versioning is enabled, test that source deletion removes every version and delete marker for that source.
 
-Do not attach a lifecycle rule that expires `.deletion-tombstones/`. Configure a 35-day expiration for date-stamped backup prefixes in the separate backup bucket, and keep tombstones long enough to outlive every restorable database snapshot. Daily full object snapshots may multiply storage costs; estimate the selected bucket size and backup cadence before launch.
+Keep the journal's `.deletion-tombstones/` prefix available for every restorable backup. Configure a 35-day expiration for dated backup prefixes in the backup bucket. On the first startup with the journal configured, existing tombstones in the primary bucket are copied into the journal before serving requests. Verify the journal's placement and permissions as part of deployment. Estimate storage costs for the selected bucket size and backup cadence.
 
 ## Rollback
 

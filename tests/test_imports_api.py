@@ -1,5 +1,6 @@
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from time import monotonic
 
 FIXTURES = Path(__file__).parents[1] / "fixtures" / "synthetic"
 
@@ -38,6 +39,33 @@ def import_memory(client, token: str, source_id: str, content: bytes | None = No
         headers={"Authorization": f"Bearer {token}"},
         files={"file": ("memory.md", payload, "text/markdown")},
     )
+
+
+def test_paused_uploads_preserve_reads_and_are_counted_in_current_metric_window(client) -> None:
+    token = register(client, "pause-uploads@example.test")
+    source_id = create_memory_source(client, token)
+    imported = import_memory(client, token, source_id)
+    assert imported.status_code == 201
+    item_id = imported.json()["items"][0]["id"]
+    client.app.state.settings.imports_enabled = False
+    client.app.state.settings.metrics_token = "synthetic-operations-metrics-token"
+    client.app.state.request_samples.append((monotonic() - 601, 5000, 503))
+
+    blocked = import_memory(client, token, source_id, b"# Paused")
+    assert blocked.status_code == 503
+    assert blocked.json()["error"]["code"] == "imports_paused"
+    assert client.get(
+        f"/api/v1/items/{item_id}/raw", headers={"Authorization": "Bearer " + token},
+    ).status_code == 200
+    metrics = client.get(
+        "/api/v1/metrics", headers={"Authorization": "Bearer synthetic-operations-metrics-token"},
+    ).json()
+    assert metrics["imports_enabled"] is False
+    assert metrics["http_5xx_sampled"] == 1
+    assert metrics["deletion_oldest_pending_seconds"] == 0
+
+    client.app.state.settings.imports_enabled = True
+    assert import_memory(client, token, source_id, b"# Resumed").status_code == 201
 
 
 def test_register_login_and_private_endpoints(client) -> None:
