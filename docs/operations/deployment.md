@@ -15,7 +15,10 @@ uv run pytest -q
 LIFEOS_WORKER_TEST_DATABASE_URL=postgresql+psycopg://lifeos:lifeos_dev@127.0.0.1:5432/lifeos uv run pytest -q tests/test_worker_claim.py
 uv run python scripts/verify_photo_ocr.py /usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc --font-index 2
 uv run python scripts/verify_database_restore.py
+LIFEOS_BENCHMARK_POSTGRES_URL=postgresql+psycopg://lifeos:lifeos_dev@127.0.0.1:5432/lifeos uv run python scripts/benchmark_mvp.py
 ```
+
+For the joint database and bucket rehearsal, start the S3 emulator on `127.0.0.1:15666` with `uv run --locked --with 'moto[server]' moto_server -H 127.0.0.1 -p 15666` in a second terminal, then run `uv run python scripts/verify_joint_restore.py`. Availability and rollback drills are operator actions: stop the `api` service to confirm the Web origin returns a visible failure and recovers after restart, and build the previous revision's image from a `git worktree` to confirm it starts against the current schema before promoting a rollback.
 
 The worker tests create and remove dedicated PostgreSQL schemas. The restore rehearsal uses a separate database within the development project. Record cloud session evidence against the branch and revision in the [iteration record](../roadmap/next-iteration.md). The real-data beta uses the separately approved environment and release checklist.
 
