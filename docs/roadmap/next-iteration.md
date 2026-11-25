@@ -10,10 +10,10 @@
 | --- | --- | --- |
 | 已完成 | M0 工程基础 | 有依赖锁、迁移、合成 fixtures、Python 与 Web CI、开发 Compose。远端基线 Linux 3.11/3.12 与 Compose 启动、就绪通过。 [GitHub Actions](https://github.com/cheng200606/Personal-AI-Life-OS/actions/runs/45466928521) |
 | 已完成 | M1 文本导入与持久化的本地实现 | CLI 明确选源、ChatGPT 本机选会话、Markdown/JSON 解析、来源定位、去重、并发重传和本地双账号边界有实现与测试。格式以支持矩阵为准。 [导入测试](../../tests/test_imports_api.py) · [聊天最小化测试](../../tests/test_chat_import_privacy.py) |
-| 部分完成 | M2a 时间线、关键词查找、导出与文本 Alpha | Web 路由、筛选、引用与 CLI 冲突安全导出已实现。API/CLI 自动化和 Web 构建通过。实际浏览器完整流程、键盘操作、Obsidian 应用打开与用户 Alpha 尚无可核对记录。 [Web](../../web/src/App.tsx) · [CLI 测试](../../tests/test_cli.py) |
+| 已完成（合成验收） | M2a 时间线、关键词查找、导出与文本 Alpha | Web 路由、筛选、引用与 CLI 冲突安全导出已实现。Playwright 用例覆盖选会话、分页、复盘编辑确认、提醒、导出、撤权与键盘焦点；Obsidian 打开记录在 A3。真实用户 Alpha 归入 C1。 [Web](../../web/src/App.tsx) · [浏览器用例](../../web/e2e/workflow.spec.ts) |
 | 部分完成 | M3 周复盘、草稿、提醒与模型质量 | 本地方案支持按周生成、确认及导出，提醒有确认、延后、完成、取消状态。30 例确定性评估只证明模板证据检查，模拟提供方测试证明门控和回退。通用的时间线建议编辑或拒绝流程、真实模型语义质量和成本待验收。 [复盘测试](../../tests/test_reviews_account.py) · [评估脚本](../../scripts/evaluate_reviews.py) |
-| 部分完成 | M2b 照片与队列 | 浏览器选照片或目录、服务端重编码去元数据、OCR 和同意后描述、可租约领取任务已有实现。基线照片测试在本地模拟 OCR，不能证明容器内中英文 OCR、真正文件夹交互、PostgreSQL 租约恢复或多 worker 竞争。照片当前从 Web 导入，CLI 覆盖文本。 [支持矩阵](../operations/support-matrix.md) · [任务服务](../../src/personal_ai_life_os/services/jobs.py) |
-| 部分完成 | M4 数据控制及运行准备 | 暂停、恢复、撤权、来源/账号删除、归档、指标与备份脚本已有。单条删除可能删除共享原件及其条目，现有测试覆盖这个语义，仍需用户理解性验证。DB 回放有合成测试，主桶同时丢失时需要独立保全删除台账并实演。 [账号测试](../../tests/test_reviews_account.py) · [灾备边界](../operations/backup-restore.md) |
+| 已完成（合成验收） | M2b 照片与队列 | 浏览器选照片或目录、服务端重编码去元数据、OCR 和同意后描述、可租约领取任务已有实现。A2 在 PostgreSQL 上覆盖租约过期、竞争者拒领与领取进程退出后的接管；A3 在目标镜像实测中英文 OCR、目录上限与逐项失败、GPS 移除。照片仍只有 Web 入口，CLI 覆盖文本。托管隐私与删除归入 B1。 [支持矩阵](../operations/support-matrix.md) · [任务服务](../../src/personal_ai_life_os/services/jobs.py) |
+| 部分完成 | M4 数据控制及运行准备 | 暂停、恢复、撤权、来源/账号删除、归档、指标与备份脚本已有。单条删除可能删除共享原件及其条目，现有测试覆盖这个语义，仍需用户理解性验证。独立删除台账已实现并纳入联合恢复预演，主桶与数据库同时丢失的场景有合成回归；托管保留窗口与真实对象版本策略归入 B1、B2。 [账号测试](../../tests/test_reviews_account.py) · [灾备边界](../operations/backup-restore.md) |
 | 未完成 | 托管准入与研究 | 现有发布记录未通过真实资料私测门槛。尚无通过验收的部署证据、连续两周试用数据或竞争力实测。 [发布清单](../operations/release-checklist.md) · [研究方案](../operations/research-protocol.md) |
 | 未完成 | PRD P1 | 定时同步/复盘、额外连接器、跨原始和派生笔记的增强检索、可配置多提供方和移动捕获留待验证后排序。当前关键词搜索和单提供方入口已经满足部分基础需求。 [PRD](../product/prd.md) |
 
@@ -68,3 +68,4 @@
 - 同一 Codespace 完成 PostgreSQL 快照恢复和删除回放，用时 2.82 秒。快照之后删除的条目保持不可读，未删对照原件仍可读。工作区配置已加入 SSH 服务并独立构建镜像成功。云端演练使用开发存储和合成数据，正式对象桶生命周期和双重故障仍按 B1、B2 验收。
 - Codespace 内 PostgreSQL 与进程内 FastAPI 容量预演达标。三类时间线查询各 30 次，对 1 万条记录的 P95 为 39.79–86.11 毫秒。30 次 500 条导入的 P95 为 5.34 秒。私有 HTTPS 的端到端功能另外验证，耗时未纳入这组容量数据。
 - 临时 Codespace 已在验收后停止，GitHub CLI 确认状态为 `Shutdown`。
+- 2026-11-25 在 `2be4f1c` 重跑本地证据：Ruff、50 项 Python 测试、30 例模板评估（来源定位与证据支持 100%、无无据事实）、Web lint 与生产构建、三份 Compose 配置解析、补丁空白检查全部通过。本地 Docker 实际构建并启动 db/api/web 至 healthy，经 web 代理的 health/ready 返回 200。该记录用于校准验证文档，不改变 B1–B3 的托管验收结论。
