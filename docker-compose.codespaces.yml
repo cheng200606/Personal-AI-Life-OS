@@ -1,0 +1,6 @@
+# Overlay for GitHub Codespaces. Published ports must bind to all interfaces so the
+# forwarded Codespaces tunnel can reach the Vite dev server.
+services:
+  web:
+    ports: !override
+      - "5173:5173"
