@@ -7,7 +7,9 @@ from uuid import uuid4
 from sqlalchemy import (
     JSON,
     Boolean,
+    CheckConstraint,
     Column,
+    Float,
     ForeignKey,
     Index,
     Integer,
@@ -96,6 +98,8 @@ class SourceConnection(Base):
     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow, onupdate=utcnow)
     last_sync_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
+    cloud_consent_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
+    cloud_consent_version: Mapped[str | None] = mapped_column(String(80), nullable=True)
 
     owner: Mapped[User] = relationship(back_populates="sources")
     items: Mapped[list["SourceItem"]] = relationship(
@@ -244,6 +248,254 @@ class ReviewSchedule(Base):
     )
     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow, onupdate=utcnow)
+
+
+class GraphEntity(Base):
+    __tablename__ = "graph_entities"
+    __table_args__ = (
+        Index("ix_graph_entities_owner_type", "owner_id", "entity_type"),
+        Index("ix_graph_entities_owner_name", "owner_id", "normalized_name"),
+    )
+
+    id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=new_id)
+    owner_id: Mapped[str] = mapped_column(
+        Uuid(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    entity_type: Mapped[str] = mapped_column(String(64), index=True)
+    name: Mapped[str] = mapped_column(String(500))
+    normalized_name: Mapped[str] = mapped_column(String(500), index=True)
+    summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    confidence: Mapped[float] = mapped_column(Float, default=1.0)
+    status: Mapped[str] = mapped_column(String(24), default="active", index=True)
+    merged_into_id: Mapped[str | None] = mapped_column(
+        Uuid(as_uuid=False), ForeignKey("graph_entities.id", ondelete="SET NULL"), nullable=True
+    )
+    created_by: Mapped[str] = mapped_column(String(32), default="model")
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow, onupdate=utcnow)
+
+    aliases: Mapped[list["EntityAlias"]] = relationship(
+        back_populates="entity", cascade="all, delete-orphan"
+    )
+
+
+class GraphRelation(Base):
+    __tablename__ = "graph_relations"
+    __table_args__ = (
+        Index("ix_graph_relations_owner_type", "owner_id", "relation_type"),
+        Index("ix_graph_relations_from", "from_entity_id"),
+        Index("ix_graph_relations_to", "to_entity_id"),
+    )
+
+    id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=new_id)
+    owner_id: Mapped[str] = mapped_column(
+        Uuid(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    from_entity_id: Mapped[str] = mapped_column(
+        Uuid(as_uuid=False), ForeignKey("graph_entities.id", ondelete="CASCADE")
+    )
+    to_entity_id: Mapped[str] = mapped_column(
+        Uuid(as_uuid=False), ForeignKey("graph_entities.id", ondelete="CASCADE")
+    )
+    relation_type: Mapped[str] = mapped_column(String(64), index=True)
+    confidence: Mapped[float] = mapped_column(Float, default=1.0)
+    status: Mapped[str] = mapped_column(String(24), default="active", index=True)
+    valid_from: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
+    valid_to: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
+    created_by: Mapped[str] = mapped_column(String(32), default="model")
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow, onupdate=utcnow)
+
+
+class GraphEvidence(Base):
+    __tablename__ = "graph_evidence"
+    __table_args__ = (
+        CheckConstraint(
+            "entity_id IS NOT NULL OR relation_id IS NOT NULL",
+            name="ck_graph_evidence_target",
+        ),
+        Index("ix_graph_evidence_owner_source", "owner_id", "source_id"),
+        Index("ix_graph_evidence_owner_available", "owner_id", "availability"),
+    )
+
+    id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=new_id)
+    owner_id: Mapped[str] = mapped_column(
+        Uuid(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    entity_id: Mapped[str | None] = mapped_column(
+        Uuid(as_uuid=False), ForeignKey("graph_entities.id", ondelete="CASCADE"), nullable=True
+    )
+    relation_id: Mapped[str | None] = mapped_column(
+        Uuid(as_uuid=False), ForeignKey("graph_relations.id", ondelete="CASCADE"), nullable=True
+    )
+    source_id: Mapped[str] = mapped_column(
+        Uuid(as_uuid=False), ForeignKey("source_connections.id", ondelete="CASCADE")
+    )
+    source_item_id: Mapped[str] = mapped_column(
+        Uuid(as_uuid=False), ForeignKey("source_items.id", ondelete="CASCADE")
+    )
+    quote: Mapped[str] = mapped_column(Text)
+    locator: Mapped[dict] = mapped_column(JSON, default=dict)
+    confidence: Mapped[float] = mapped_column(Float, default=1.0)
+    availability: Mapped[str] = mapped_column(String(24), default="active", index=True)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
+
+
+class EntityAlias(Base):
+    __tablename__ = "entity_aliases"
+    __table_args__ = (
+        Index("ix_entity_aliases_owner_name", "owner_id", "normalized_alias"),
+    )
+
+    id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=new_id)
+    owner_id: Mapped[str] = mapped_column(
+        Uuid(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    entity_id: Mapped[str] = mapped_column(
+        Uuid(as_uuid=False), ForeignKey("graph_entities.id", ondelete="CASCADE"), index=True
+    )
+    alias: Mapped[str] = mapped_column(String(500))
+    normalized_alias: Mapped[str] = mapped_column(String(500), index=True)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
+
+    entity: Mapped[GraphEntity] = relationship(back_populates="aliases")
+
+
+class EntityMergeLog(Base):
+    __tablename__ = "entity_merge_logs"
+    __table_args__ = (
+        Index("ix_entity_merge_logs_owner_created", "owner_id", "created_at"),
+    )
+
+    id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=new_id)
+    owner_id: Mapped[str] = mapped_column(
+        Uuid(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    source_entity_id: Mapped[str | None] = mapped_column(
+        Uuid(as_uuid=False), ForeignKey("graph_entities.id", ondelete="SET NULL"), nullable=True
+    )
+    target_entity_id: Mapped[str | None] = mapped_column(
+        Uuid(as_uuid=False), ForeignKey("graph_entities.id", ondelete="SET NULL"), nullable=True
+    )
+    status: Mapped[str] = mapped_column(String(24), default="active")
+    snapshot: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
+    undone_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
+
+
+class OntologyType(Base):
+    __tablename__ = "ontology_types"
+    __table_args__ = (
+        UniqueConstraint("owner_id", "kind", "name", name="uq_ontology_type_owner_kind_name"),
+        Index("ix_ontology_types_owner_status", "owner_id", "status"),
+    )
+
+    id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=new_id)
+    owner_id: Mapped[str] = mapped_column(
+        Uuid(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    kind: Mapped[str] = mapped_column(String(16))  # entity / relation
+    name: Mapped[str] = mapped_column(String(64))
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(String(24), default="proposed", index=True)
+    source: Mapped[str] = mapped_column(String(16), default="model")  # model / user
+    created_by: Mapped[str] = mapped_column(String(32), default="model")
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow, onupdate=utcnow)
+
+
+class ExtractionRun(Base):
+    __tablename__ = "extraction_runs"
+    __table_args__ = (
+        Index("ix_extraction_runs_owner_created", "owner_id", "created_at"),
+    )
+
+    id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=new_id)
+    owner_id: Mapped[str] = mapped_column(
+        Uuid(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    status: Mapped[str] = mapped_column(String(24), default="queued", index=True)
+    provider: Mapped[str] = mapped_column(String(120))
+    model: Mapped[str] = mapped_column(String(160))
+    prompt_version: Mapped[str] = mapped_column(String(40))
+    requested_hash: Mapped[str] = mapped_column(String(64), index=True)
+    requested_item_ids: Mapped[list] = mapped_column(JSON, default=list)
+    item_count: Mapped[int] = mapped_column(Integer, default=0)
+    entity_count: Mapped[int] = mapped_column(Integer, default=0)
+    relation_count: Mapped[int] = mapped_column(Integer, default=0)
+    review_count: Mapped[int] = mapped_column(Integer, default=0)
+    input_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    output_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    cost_usd: Mapped[Decimal | None] = mapped_column(Numeric(12, 6), nullable=True)
+    latency_ms: Mapped[int] = mapped_column(Integer, default=0)
+    error_code: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
+    completed_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
+
+
+class GraphReviewItem(Base):
+    __tablename__ = "graph_review_items"
+    __table_args__ = (
+        Index("ix_graph_review_items_owner_status", "owner_id", "status"),
+        Index("ix_graph_review_items_owner_created", "owner_id", "created_at"),
+    )
+
+    id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=new_id)
+    owner_id: Mapped[str] = mapped_column(
+        Uuid(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    extraction_run_id: Mapped[str | None] = mapped_column(
+        Uuid(as_uuid=False), ForeignKey("extraction_runs.id", ondelete="SET NULL"), nullable=True
+    )
+    kind: Mapped[str] = mapped_column(String(16))  # entity / relation / merge / ontology
+    payload: Mapped[dict] = mapped_column(JSON, default=dict)
+    confidence: Mapped[float] = mapped_column(Float, default=0.0)
+    status: Mapped[str] = mapped_column(String(24), default="pending", index=True)
+    reason: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
+    resolved_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
+
+
+class QaThread(Base):
+    __tablename__ = "qa_threads"
+    __table_args__ = (Index("ix_qa_threads_owner_updated", "owner_id", "updated_at"),)
+
+    id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=new_id)
+    owner_id: Mapped[str] = mapped_column(
+        Uuid(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    title: Mapped[str] = mapped_column(String(240), default="新的提问")
+    scope: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow, onupdate=utcnow)
+
+    messages: Mapped[list["QaMessage"]] = relationship(
+        back_populates="thread",
+        cascade="all, delete-orphan",
+        order_by="QaMessage.created_at",
+    )
+
+
+class QaMessage(Base):
+    __tablename__ = "qa_messages"
+    __table_args__ = (Index("ix_qa_messages_thread_created", "thread_id", "created_at"),)
+
+    id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=new_id)
+    owner_id: Mapped[str] = mapped_column(
+        Uuid(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    thread_id: Mapped[str] = mapped_column(
+        Uuid(as_uuid=False), ForeignKey("qa_threads.id", ondelete="CASCADE"), index=True
+    )
+    role: Mapped[str] = mapped_column(String(16))  # user / assistant
+    content: Mapped[str] = mapped_column(Text, default="")
+    answer: Mapped[dict] = mapped_column(JSON, default=dict)
+    citations: Mapped[list] = mapped_column(JSON, default=list)
+    confidence: Mapped[float] = mapped_column(Float, default=0.0)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
+
+    thread: Mapped[QaThread] = relationship(back_populates="messages")
 
 
 class ModelRun(Base):

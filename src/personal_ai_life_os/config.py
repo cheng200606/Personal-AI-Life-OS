@@ -59,6 +59,11 @@ class Settings(BaseSettings):
     model_input_cost_per_million_usd: Decimal = Decimal(0)
     model_output_cost_per_million_usd: Decimal = Decimal(0)
     model_max_cost_per_call_usd: Decimal = Decimal("0.10")
+    model_monthly_budget_usd: Decimal = Decimal("5.00")
+    graph_cloud_consent_version: str = "graph-cloud-v1"
+    graph_extraction_confidence_threshold: float = 0.75
+    graph_extraction_max_items: int = 10
+    graph_model_providers: str | None = None
 
     @property
     def cors_origin_list(self) -> list[str]:

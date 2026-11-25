@@ -9,6 +9,10 @@ An Apache-2.0 open source project for importing selected chat exports, photos, a
 ## What works
 
 - Select and preview Markdown or ChatGPT export files locally. Chat messages are not printed in preview; the upload contains only chosen conversations.
+- Import Claude, Gemini, ZCode, DeepSeek harness, and WorkBuddy JSON/JSONL or Markdown exports, plus TXT, text-based PDF, and DOCX documents. Text extraction is local; scanned PDFs are not supported yet.
+- Extract an evidence graph from manually selected items: entities, relations, exact quotes, confidence, and a low-confidence review state. Cloud extraction requires per-source consent, a configured provider, and the monthly/per-call budget.
+- Review, edit, approve, or reject low-confidence items; merge duplicate entities with a reversible snapshot; and approve custom ontology types before they enter later extraction prompts.
+- Ask questions over active evidence in the Chinese-first Ask page. Answers include structured facts, original citations, confidence, fact/inference/uncertain labels, missing information, and action suggestions. Threads remember the last scope and can be exported or deleted; revoked sources and deleted evidence are excluded.
 - Import up to ten user-selected JPEG, PNG, or WebP photos, including from a selected folder. The server re-encodes images to strip metadata and runs OCR inline or as a recoverable job, depending on configuration. Optional external reviews and photo descriptions require consent and use jobs in worker mode.
 - Browse and search an owner-scoped timeline with date and source filters, inspect the original source, and export stable Markdown files with conflict handling.
 - Search timeline items, weekly reviews, and reminders together on one page, with grouped results, per-group totals, snippets, and links back to each record.
@@ -51,7 +55,7 @@ Open `http://127.0.0.1:5173`. The development proxy connects to the local API.
 
 ### Optional cloud AI
 
-External reviews and photo descriptions stay off by default so a local instance runs without a provider key. To enable them, set `MODEL_PROVIDER=openai`, `OPENAI_API_KEY`, and non-zero `MODEL_INPUT_COST_PER_MILLION_USD` / `MODEL_OUTPUT_COST_PER_MILLION_USD` values. Any OpenAI-compatible gateway works: point `OPENAI_BASE_URL` at its API root. The web client asks for consent before the first external call, and template reviews keep working when the provider is unavailable.
+External reviews and photo descriptions stay off by default so a local instance runs without a provider key. To enable them, set `MODEL_PROVIDER=openai`, `OPENAI_API_KEY`, and non-zero `MODEL_INPUT_COST_PER_MILLION_USD` / `MODEL_OUTPUT_COST_PER_MILLION_USD` values. Any OpenAI-compatible gateway works: point `OPENAI_BASE_URL` at its API root. The web client asks for consent before the first external call, and template reviews keep working when the provider is unavailable. Graph extraction uses the same configured provider by default; `GRAPH_MODEL_PROVIDERS` can define named providers, and `MODEL_MONTHLY_BUDGET_USD` (default 5.00) warns at 80% and blocks over-budget calls. Every source needs an explicit cloud-extraction consent before its items can be sent.
 
 Local data lives in `data/lifeos.db` and `data/objects`. Copy both together to back up or move the instance.
 
@@ -87,7 +91,7 @@ The benchmark uses only generated data on local SQLite; it is not evidence of ho
 
 ## 中文简介
 
-Personal AI Life OS 是一个 Apache-2.0 开源的个人工作与学习记忆系统。用户明确选择资料后，可以导入 ChatGPT 导出、照片和 agent 的 `memory.md`，查看可追溯的时间线，生成可编辑周复盘与提醒，并导出 Obsidian Markdown。可设置每周复盘计划并在应用内查看到期/逾期提醒，也可用 Windows 计划任务运行可重复的文件夹同步。
+Personal AI Life OS 是一个 Apache-2.0 开源的个人工作与学习记忆系统。用户明确选择资料后，可以导入 ChatGPT、Claude、Gemini、ZCode、DeepSeek harness、WorkBuddy 导出，以及 Markdown/TXT/PDF/DOCX 文档，查看可追溯的时间线，抽取带证据的实体/关系图谱，生成可编辑周复盘与提醒，并导出 Obsidian Markdown。可设置每周复盘计划并在应用内查看到期/逾期提醒，也可用 Windows 计划任务运行可重复的文件夹同步。
 
 MVP 的本地开发主流程已实现，但尚未部署到托管环境，也未通过真实用户私测准入。不要把真实个人资料放入未验证的共享部署；上线前请完成[发布清单](docs/operations/release-checklist.md)。
 

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import './App.css'
 
-type Source = { id: string; kind: string; name: string; status: string; selected_scope: Record<string, unknown>; last_sync_at: string | null }
+type Source = { id: string; kind: string; name: string; status: string; selected_scope: Record<string, unknown>; last_sync_at: string | null; cloud_consent_at: string | null; cloud_consent_version: string | null }
 type Item = { id: string; source_id: string; kind: string; title: string; content_text: string; occurred_at: string | null; source_locator: Record<string, unknown>; metadata: Record<string, unknown> }
 type Job = { id: string; kind: string; status: string; attempt_count: number; max_attempts: number; error_code: string | null; result_json: Record<string, unknown> | null }
 type ReviewSuggestion = { text: string; source_ids: string[]; status?: 'pending' | 'dismissed' }
@@ -13,15 +13,32 @@ type ReviewSchedule = { enabled: boolean; weekday: number; local_hour: number; l
 type SchedulePayload = { enabled: boolean; weekday: number; local_hour: number; local_minute: number; timezone: string; use_external_model: boolean }
 type User = { id: string; email: string; timezone: string; ai_consent_at: string | null }
 type Conversation = { id: string; title: string; created_at: number | null }
-type Page = 'timeline' | 'reviews' | 'search' | 'account'
+type Page = 'timeline' | 'ask' | 'graph' | 'reviews' | 'search' | 'account'
 type SearchTimelineHit = { id: string; source_id: string; source_name: string; title: string; snippet: string; occurred_at: string | null; kind: string }
 type SearchReviewHit = { id: string; period_start: string; period_end: string; status: string; snippet: string; updated_at: string }
 type SearchReminderHit = { id: string; title: string; snippet: string; due_at: string | null; status: string }
 type SearchGroup<T> = { total: number; results: T[] }
 type SearchResults = { query: string; timeline: SearchGroup<SearchTimelineHit>; reviews: SearchGroup<SearchReviewHit>; reminders: SearchGroup<SearchReminderHit> }
 type Disclosure = { available: boolean; provider: string | null; model: string | null; disclosure_version: string | null; data_sent: string; retention: string; privacy_url: string | null; input_cost_per_million_usd: string | null; output_cost_per_million_usd: string | null; max_cost_per_call_usd: string | null }
+type GraphEvidence = { id: string; quote: string; confidence: number; availability: string; source_id: string; source_item_id: string; locator: Record<string, unknown> }
+type GraphEntity = { id: string; entity_type: string; name: string; summary: string | null; confidence: number; status: string; evidence: GraphEvidence[] }
+type GraphRelation = { id: string; from_entity_id: string; to_entity_id: string; relation_type: string; confidence: number; status: string; evidence: GraphEvidence[] }
+type ReviewPayload = { entity_id?: string; relation_id?: string; name?: string; type?: string; relation_type?: string; from_entity_id?: string; to_entity_id?: string; ontology_type_id?: string; source_entity_id?: string; target_entity_id?: string }
+type GraphReviewItem = { id: string; kind: string; payload: ReviewPayload; confidence: number; status: string; reason: string | null; extraction_run_id: string | null; created_at: string; resolved_at: string | null }
+type GraphMerge = { id: string; source_entity_id: string | null; target_entity_id: string | null; source_name: string | null; target_name: string | null; status: string; evidence_count: number; relation_count: number; created_at: string; undone_at: string | null }
+type OntologyType = { id: string; kind: string; name: string; description: string | null; status: string; source: string; created_by: string; version: number; created_at: string; updated_at: string }
+type QaScope = { source_ids: string[]; entity_ids: string[]; start: string | null; end: string | null }
+type QaCitation = { evidence_id: string; quote: string; confidence: number; availability: string; source_id: string; source_name: string; source_item_id: string; item_title: string; occurred_at: string | null; locator: Record<string, unknown> }
+type QaFact = { label: string; detail: string; basis: 'fact' | 'inference' | 'uncertain'; confidence: number; entity_id: string | null; relation_id: string | null; citation_ids: string[] }
+type QaSuggestion = { label: string; kind: string; entity_id: string | null; source_item_id: string | null }
+type QaTimelineMatch = { source_item_id: string; source_id: string; source_name: string; title: string; snippet: string; occurred_at: string | null; kind: string }
+type QaReviewMatch = { id: string; period_start: string; period_end: string; status: string; snippet: string }
+type QaAnswer = { status: 'answered' | 'insufficient_evidence'; summary: string; facts: QaFact[]; citations: QaCitation[]; timeline_matches: QaTimelineMatch[]; review_matches: QaReviewMatch[]; missing_info: string[]; suggestions: QaSuggestion[]; confidence: number; scope: Record<string, unknown>; keywords: string[]; intent: string | null; latency_ms: number; version: string }
+type QaMessage = { id: string; role: string; content: string; answer: QaAnswer | null; created_at: string }
+type QaThread = { id: string; title: string; scope: QaScope; created_at: string; updated_at: string; messages: QaMessage[] }
 
 const API = (import.meta.env.VITE_API_BASE_URL || '') + '/api/v1'
+const GRAPH_CLOUD_CONSENT_VERSION = 'graph-cloud-v1'
 
 async function api<T>(path: string, token: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers)
@@ -62,9 +79,15 @@ function sourceScopeDescription(source: Source): string {
     const count = Array.isArray(ids) ? ids.length : 0
     return `${count} selected conversations · user/assistant text, message IDs, and available timestamps`
   }
+  if (source.kind === 'chat_export') {
+    return 'Selected chat export · user/assistant text, conversation/message IDs, and available timestamps'
+  }
   if (source.kind === 'photo') {
     const count = typeof source.selected_scope.file_count === 'number' ? source.selected_scope.file_count : 1
     return `${count} selected photo(s) · image pixels, optional capture time, and searchable OCR text; location metadata is stripped`
+  }
+  if (source.kind === 'document') {
+    return 'Selected document · Markdown/TXT/PDF/DOCX text, headings/pages/paragraphs, and source locations'
   }
   return `Selected Markdown file · UTF-8 section text, headings, dates, and line locations (${source.name})`
 }
@@ -73,8 +96,18 @@ function selectedFileDisclosure(file: File, selectedConversationCount: number): 
   if (file.type.startsWith('image/')) {
     return 'This selected photo will be uploaded for re-encoding and OCR. EXIF and location metadata are removed from the stored copy. External description is a separate, optional action.'
   }
-  if (file.name.toLowerCase().endsWith('.json')) {
-    return `Only the ${selectedConversationCount} selected conversations will be uploaded. Their user/assistant text, message IDs, and available timestamps are processed; other conversations stay on this device.`
+  const name = file.name.toLowerCase()
+  if (name.endsWith('.jsonl')) {
+    return 'The full selected JSONL chat export will be uploaded and parsed into user/assistant messages with available timestamps.'
+  }
+  if (name.endsWith('.json')) {
+    return `If this is a ChatGPT export, only the ${selectedConversationCount} selected conversations are uploaded. Other JSON chat exports are uploaded as a whole file.`
+  }
+  if (name.endsWith('.pdf') || name.endsWith('.docx')) {
+    return 'The full selected document will be uploaded; text is extracted locally and page/paragraph locations are retained. Scanned PDFs are not supported yet.'
+  }
+  if (name.endsWith('.txt')) {
+    return 'The full selected text document will be uploaded and stored as one source item with line locations.'
   }
   return 'The full selected UTF-8 Markdown file will be uploaded and split into heading sections with dates and line locations. No other files are read.'
 }
@@ -99,6 +132,7 @@ function App() {
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<SearchResults | null>(null)
   const [searchLoading, setSearchLoading] = useState(false)
+  const [pendingReviewTotal, setPendingReviewTotal] = useState(0)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const [busy, setBusy] = useState(false)
@@ -124,13 +158,13 @@ function App() {
       if (dateStart) params.set('start', dateStart)
       if (dateEnd) params.set('end', dateEnd)
       if (sourceFilter) params.set('source_id', sourceFilter)
-      const [me, sourceList, timeline, reviewList, reminderList, modelDisclosure, reviewSchedule] = await Promise.all([
+      const [me, sourceList, timeline, reviewList, reminderList, modelDisclosure, reviewSchedule, reviewQueue] = await Promise.all([
         api<User>('/auth/me', token), api<Source[]>('/sources', token), api<{ items: Item[]; total: number; next_cursor: string | null }>('/timeline?' + params.toString(), token),
         api<Review[]>('/reviews', token), api<Reminder[]>('/reminders', token), fetch(API + '/auth/model-disclosure').then((response) => response.json() as Promise<Disclosure>),
-        api<ReviewSchedule>('/review-schedule', token),
+        api<ReviewSchedule>('/review-schedule', token), api<{ total: number }>('/graph/review?status=pending&limit=1', token),
       ])
       if (activeToken.current !== token) return
-      setUser(me); setSources(sourceList); setItems(timeline.items); setTimelineTotal(timeline.total); setTimelineCursor(timeline.next_cursor); setReviews(reviewList); setReminders(reminderList); setDisclosure(modelDisclosure); setSchedule(reviewSchedule)
+      setUser(me); setSources(sourceList); setItems(timeline.items); setTimelineTotal(timeline.total); setTimelineCursor(timeline.next_cursor); setReviews(reviewList); setReminders(reminderList); setDisclosure(modelDisclosure); setSchedule(reviewSchedule); setPendingReviewTotal(reviewQueue.total)
     } catch (e) { if (activeToken.current === token) setError(e instanceof Error ? e.message : 'Could not load your workspace.') }
   }, [dateEnd, dateStart, query, sourceFilter, token])
 
@@ -222,13 +256,13 @@ function App() {
     const imageFiles = selectedFiles.filter((selectedFile) => /\.(jpe?g|png|webp)$/i.test(selectedFile.name))
     const skipped = selectedFiles.length - imageFiles.length
     const nextFiles = fromDirectory ? imageFiles : selectedFiles
-    if (!fromDirectory && selectedFiles.length === 1 && imageFiles.length === 0 && !/\.(md|markdown|json)$/i.test(selectedFiles[0].name)) {
-      setError('Choose a UTF-8 Markdown file, ChatGPT conversations.json, or a supported JPEG, PNG, or WebP photo.')
+    if (!fromDirectory && selectedFiles.length === 1 && imageFiles.length === 0 && !/\.(md|markdown|txt|pdf|docx|json|jsonl)$/i.test(selectedFiles[0].name)) {
+      setError('Choose a Markdown, TXT, PDF, DOCX, or chat export file, or a supported JPEG, PNG, or WebP photo.')
       return
     }
     if (nextFiles.length > 10) { setError('Select at most 10 photos per import.'); return }
     if (nextFiles.length > 1 && (imageFiles.length !== nextFiles.length || !fromDirectory && selectedFiles.some((selectedFile) => !/\.(jpe?g|png|webp)$/i.test(selectedFile.name)))) {
-      setError('Select one Markdown or ChatGPT file, or choose only supported photo files.'); return
+      setError('Select one text/document/chat file, or choose only supported photo files.'); return
     }
     if (fromDirectory && nextFiles.length === 0) { setError('The selected folder contains no supported JPEG, PNG, or WebP photos.'); return }
     const next = nextFiles[0] || null
@@ -236,13 +270,31 @@ function App() {
     setPhotoPreview(next && /\.(jpe?g|png|webp)$/i.test(next.name) ? URL.createObjectURL(next) : '')
     if (fromDirectory && skipped) setNotice(`${skipped} non-photo file(s) in the folder were ignored.`)
     if (nextFiles.length === 1 && next?.name.toLowerCase().endsWith('.json')) {
-      try { setConversations(parseConversations(await next.text())) } catch (e) { setError(e instanceof Error ? e.message : 'Could not preview this file.') }
+      try {
+        const text = await next.text()
+        const document = JSON.parse(text)
+        const list = Array.isArray(document) ? document : document.conversations
+        const hasMessages = !Array.isArray(list) && document && typeof document === 'object' && ['messages', 'chat_messages', 'turns'].some((key) => Array.isArray(document[key]))
+        if (!Array.isArray(list) && !hasMessages) throw new Error('Unsupported chat export. Choose a JSON/JSONL chat export or a document.')
+        const isChatGPT = Array.isArray(list) && list.some((entry) => entry && typeof entry === 'object' && 'mapping' in entry)
+        setConversations(isChatGPT ? parseConversations(text) : [])
+        if (!isChatGPT) setNotice('This JSON chat export will be uploaded as a whole file.')
+      } catch (e) { setError(e instanceof Error ? e.message : 'Could not preview this file.') }
     }
   }
 
   async function importSelected(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); if (!file) return
-    const kind = photoFiles.length ? 'photo' : file.name.toLowerCase().endsWith('.json') ? 'chatgpt_export' : 'memory_markdown'
+    const lower = file.name.toLowerCase()
+    let kind = photoFiles.length ? 'photo' : lower.endsWith('.jsonl') ? 'chat_export' : lower.endsWith('.json') ? 'chatgpt_export' : 'document'
+    if (kind === 'chatgpt_export') {
+      try {
+        const document = JSON.parse(await file.text())
+        const conversations = Array.isArray(document) ? document : document.conversations
+        const looksLikeChatGPT = Array.isArray(conversations) && conversations.some((entry) => entry && typeof entry === 'object' && 'mapping' in entry)
+        if (!looksLikeChatGPT) kind = 'chat_export'
+      } catch { setError('Could not read this JSON file.'); return }
+    }
     if (kind === 'chatgpt_export' && selected.length === 0) { setError('Select at least one conversation.'); return }
     setBusy(true); setError(''); setNotice('')
     try {
@@ -306,6 +358,14 @@ function App() {
       else await api('/sources/' + source.id + '/status', token, { method: 'PATCH', body: JSON.stringify({ status: action === 'pause' ? 'paused' : 'active' }) })
       await refresh()
     } catch (e) { setError(e instanceof Error ? e.message : 'Source update failed.') }
+  }
+
+  async function setCloudConsent(source: Source, enabled: boolean) {
+    setError('')
+    try {
+      await api('/sources/' + source.id + '/cloud-consent', token, { method: 'PATCH', body: JSON.stringify({ enabled, consent_version: GRAPH_CLOUD_CONSENT_VERSION }) })
+      await refresh()
+    } catch (e) { setError(e instanceof Error ? e.message : 'Could not update cloud extraction consent.') }
   }
 
   async function exportItem(item: Item) {
@@ -446,6 +506,11 @@ function App() {
     window.setTimeout(() => document.getElementById('timeline-item-' + hit.id)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 450)
   }
 
+  function openTimelineCitation(itemId: string, sourceId: string) {
+    setPage('timeline'); setSourceFilter(sourceId); setDateStart(''); setDateEnd(''); setQuery('')
+    window.setTimeout(() => document.getElementById('timeline-item-' + itemId)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 450)
+  }
+
   function openReviewHit(hit: SearchReviewHit) {
     setPage('reviews')
     window.setTimeout(() => document.getElementById('review-' + hit.id)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 450)
@@ -475,13 +540,17 @@ function App() {
   const searchTotal = searchResults ? searchResults.timeline.total + searchResults.reviews.total + searchResults.reminders.total : 0
   const dueReminders = reminders.filter((reminder) => ['pending', 'snoozed'].includes(reminder.status) && reminder.due_at && new Date(reminder.due_at).getTime() <= now)
   const readyReview = schedule?.last_review_id ? reviews.find((review) => review.id === schedule.last_review_id && review.status === 'draft') : undefined
+  const pageTitle: Record<Page, string> = { timeline: 'Timeline', ask: '提问', graph: '图谱与待审', search: 'Search', reviews: 'Weekly review', account: 'Account & sources' }
 
-  return <div className="app-shell"><aside className="sidebar"><div className="brand"><span className="brand-mark small">L</span><span>Life OS</span></div><nav aria-label="Main navigation"><button className={page === 'timeline' ? 'nav-link active' : 'nav-link'} onClick={() => setPage('timeline')}>◷ <span>Timeline</span></button><button className={page === 'search' ? 'nav-link active' : 'nav-link'} onClick={() => setPage('search')}>⌕ <span>Search</span></button><button className={page === 'reviews' ? 'nav-link active' : 'nav-link'} onClick={() => setPage('reviews')}>✳ <span>Weekly review</span>{dueReminders.length > 0 && <span className="nav-badge">{dueReminders.length}</span>}</button><button className={page === 'account' ? 'nav-link active' : 'nav-link'} onClick={() => setPage('account')}>⚙ <span>Account & sources</span></button></nav><div className="sidebar-foot"><span className="avatar">{user?.email.slice(0, 1).toUpperCase()}</span><span className="user-email">{user?.email}</span><button className="icon-button" title="Sign out" onClick={() => { sessionStorage.removeItem('lifeos-token'); activeToken.current = ''; setToken(''); setUser(null) }}>↗</button></div></aside>
-    <main className="main"><header className="topbar"><div><p className="eyebrow">YOUR PERSONAL KNOWLEDGE SPACE</p><h1>{page === 'timeline' ? 'Timeline' : page === 'search' ? 'Search' : page === 'reviews' ? 'Weekly review' : 'Account & sources'}</h1></div><span className="privacy-pill"><span className="live-dot" /> Private workspace</span></header>
+  return <div className="app-shell"><aside className="sidebar"><div className="brand"><span className="brand-mark small">L</span><span>Life OS</span></div><nav aria-label="Main navigation"><button className={page === 'timeline' ? 'nav-link active' : 'nav-link'} onClick={() => setPage('timeline')}>◷ <span>Timeline</span></button><button className={page === 'ask' ? 'nav-link active' : 'nav-link'} onClick={() => setPage('ask')}>✦ <span>提问</span></button><button className={page === 'graph' ? 'nav-link active' : 'nav-link'} onClick={() => setPage('graph')}>◇ <span>图谱与待审</span>{pendingReviewTotal > 0 && <span className="nav-badge">{pendingReviewTotal}</span>}</button><button className={page === 'search' ? 'nav-link active' : 'nav-link'} onClick={() => setPage('search')}>⌕ <span>Search</span></button><button className={page === 'reviews' ? 'nav-link active' : 'nav-link'} onClick={() => setPage('reviews')}>✳ <span>Weekly review</span>{dueReminders.length > 0 && <span className="nav-badge">{dueReminders.length}</span>}</button><button className={page === 'account' ? 'nav-link active' : 'nav-link'} onClick={() => setPage('account')}>⚙ <span>Account & sources</span></button></nav><div className="sidebar-foot"><span className="avatar">{user?.email.slice(0, 1).toUpperCase()}</span><span className="user-email">{user?.email}</span><button className="icon-button" title="Sign out" onClick={() => { sessionStorage.removeItem('lifeos-token'); activeToken.current = ''; setToken(''); setUser(null) }}>↗</button></div></aside>
+    <main className="main"><header className="topbar"><div><p className="eyebrow">YOUR PERSONAL KNOWLEDGE SPACE</p><h1>{pageTitle[page]}</h1></div><span className="privacy-pill"><span className="live-dot" /> Private workspace</span></header>
       {error && <div className="notice error" role="alert">{error}<button className="icon-button" onClick={() => setError('')}>×</button></div>}
       {notice && <div className="notice success" role="status">{notice}<button className="icon-button" onClick={() => setNotice('')}>×</button></div>}
+      {page === 'ask' && <AskPanel token={token} sources={sources} onError={setError} onNotice={setNotice} onOpenCitation={openTimelineCitation} />}
+      {page === 'graph' && <GraphPanel token={token} onError={setError} onNotice={setNotice} onPendingChange={setPendingReviewTotal} />}
       {page === 'timeline' && <><section className="hero-panel"><div><p className="eyebrow">CAPTURE WHAT MATTERS</p><h2>Make your context useful.</h2><p className="muted">Import selected notes, conversations, or photos. Your timeline keeps every detail connected to its source.</p></div><div className="stat"><strong>{timelineTotal}</strong><span>timeline items</span></div></section>
-        <section className="panel import-panel"><div className="panel-heading"><div><p className="eyebrow">ADD A SOURCE</p><h2>Import selected material</h2></div><span className="limit-pill">Up to 5 MB text · 20 MB photo</span></div><form onSubmit={importSelected} className="import-form"><label className="file-drop"><span className="upload-icon">↑</span><span><strong>{file ? file.name : 'Choose a file'}</strong><small>Markdown, ChatGPT conversations.json, JPEG, PNG, or WebP</small></span><input type="file" accept=".md,.markdown,.json,image/jpeg,image/png,image/webp" multiple onChange={(event) => void previewFiles(event.target.files)} /></label><label className="folder-picker">Choose a photo folder<input ref={directoryInput} type="file" accept="image/jpeg,image/png,image/webp" multiple onChange={(event) => void previewFiles(event.target.files, true)} /></label>{conversations.length > 0 && <div className="selection-box"><div className="selection-head"><strong>Select conversations to import</strong><button type="button" className="text-button" onClick={() => setSelected(selected.length === conversations.length ? [] : conversations.map((entry) => entry.id))}>{selected.length === conversations.length ? 'Clear selection' : 'Select all'}</button></div><div className="conversation-list">{conversations.map((entry) => <label className="conversation" key={entry.id}><input type="checkbox" checked={selected.includes(entry.id)} onChange={(event) => setSelected(event.target.checked ? [...selected, entry.id] : selected.filter((value) => value !== entry.id))} /><span>{entry.title}<small>{entry.created_at ? new Date(entry.created_at * 1000).toLocaleDateString() : 'Date unknown'}</small></span></label>)}</div><p className="small-note">Unselected conversations stay on this device and are not uploaded.</p></div>}{photoFiles.length > 0 && <><p className="small-note">{photoFiles.length} photo(s) selected. Each photo is uploaded separately; folder paths and unsupported files are not sent.</p>{photoFiles.length === 1 && <div className="local-photo-preview"><img src={photoPreview} alt="Selected photo preview" /><p className="small-note">The saved photo is re-encoded to remove EXIF location and other metadata. OCR text is searchable.</p></div>}{photoFiles.length === 1 && <label className="inline-field">Photo date (optional)<input type="datetime-local" value={photoDate} onChange={(event) => setPhotoDate(event.target.value)} /></label>}</>}<div className="import-actions"><p className="small-note">Files are processed only after you submit this selection.</p>{photoFiles.length > 1 ? <p className="selection-disclosure"><strong>{photoFiles.length} photos · {photoFiles.reduce((total, selectedFile) => total + selectedFile.size, 0).toLocaleString()} bytes.</strong> Selected photos will be sanitized and processed; EXIF/GPS metadata is removed.</p> : file && <p className="selection-disclosure"><strong>{file.name} · {file.size.toLocaleString()} bytes.</strong> {selectedFileDisclosure(file, selected.length)}</p>}<button className="primary" disabled={busy || !file}>{busy ? 'Importing…' : 'Import selected'}</button></div></form></section>
+        {pendingReviewTotal > 0 && <div className="notice success">有 {pendingReviewTotal} 条低置信度图谱条目待审。<button className="text-button" onClick={() => setPage('graph')}>去处理 ↗</button></div>}
+        <section className="panel import-panel"><div className="panel-heading"><div><p className="eyebrow">ADD A SOURCE</p><h2>Import selected material</h2></div><span className="limit-pill">Up to 5 MB text · 20 MB photo</span></div><form onSubmit={importSelected} className="import-form"><label className="file-drop"><span className="upload-icon">↑</span><span><strong>{file ? file.name : 'Choose a file'}</strong><small>Markdown, TXT, PDF, DOCX, chat JSON/JSONL, JPEG, PNG, or WebP</small></span><input type="file" accept=".md,.markdown,.txt,.pdf,.docx,.json,.jsonl,image/jpeg,image/png,image/webp" multiple onChange={(event) => void previewFiles(event.target.files)} /></label><label className="folder-picker">Choose a photo folder<input ref={directoryInput} type="file" accept="image/jpeg,image/png,image/webp" multiple onChange={(event) => void previewFiles(event.target.files, true)} /></label>{conversations.length > 0 && <div className="selection-box"><div className="selection-head"><strong>Select conversations to import</strong><button type="button" className="text-button" onClick={() => setSelected(selected.length === conversations.length ? [] : conversations.map((entry) => entry.id))}>{selected.length === conversations.length ? 'Clear selection' : 'Select all'}</button></div><div className="conversation-list">{conversations.map((entry) => <label className="conversation" key={entry.id}><input type="checkbox" checked={selected.includes(entry.id)} onChange={(event) => setSelected(event.target.checked ? [...selected, entry.id] : selected.filter((value) => value !== entry.id))} /><span>{entry.title}<small>{entry.created_at ? new Date(entry.created_at * 1000).toLocaleDateString() : 'Date unknown'}</small></span></label>)}</div><p className="small-note">Unselected conversations stay on this device and are not uploaded.</p></div>}{photoFiles.length > 0 && <><p className="small-note">{photoFiles.length} photo(s) selected. Each photo is uploaded separately; folder paths and unsupported files are not sent.</p>{photoFiles.length === 1 && <div className="local-photo-preview"><img src={photoPreview} alt="Selected photo preview" /><p className="small-note">The saved photo is re-encoded to remove EXIF location and other metadata. OCR text is searchable.</p></div>}{photoFiles.length === 1 && <label className="inline-field">Photo date (optional)<input type="datetime-local" value={photoDate} onChange={(event) => setPhotoDate(event.target.value)} /></label>}</>}<div className="import-actions"><p className="small-note">Files are processed only after you submit this selection.</p>{photoFiles.length > 1 ? <p className="selection-disclosure"><strong>{photoFiles.length} photos · {photoFiles.reduce((total, selectedFile) => total + selectedFile.size, 0).toLocaleString()} bytes.</strong> Selected photos will be sanitized and processed; EXIF/GPS metadata is removed.</p> : file && <p className="selection-disclosure"><strong>{file.name} · {file.size.toLocaleString()} bytes.</strong> {selectedFileDisclosure(file, selected.length)}</p>}<button className="primary" disabled={busy || !file}>{busy ? 'Importing…' : 'Import selected'}</button></div></form></section>
         <section className="timeline-layout"><div className="panel timeline-panel"><div className="panel-heading"><div><p className="eyebrow">YOUR RECORD</p><h2>Recent activity</h2></div><span className="count-pill">{visibleItems.length} / {timelineTotal}</span></div><label className="search"><span>⌕</span><input aria-label="Search timeline" placeholder="Search notes and conversations" value={query} onChange={(event) => setQuery(event.target.value)} /><kbd>⌘ K</kbd></label><div className="filter-row"><label>From<input type="date" value={dateStart} onChange={(event) => setDateStart(event.target.value)} /></label><label>Until<input type="date" value={dateEnd} onChange={(event) => setDateEnd(event.target.value)} /></label><label>Source<select value={sourceFilter} onChange={(event) => setSourceFilter(event.target.value)}><option value="">All sources</option>{sources.map((source) => <option value={source.id} key={source.id}>{source.name}</option>)}</select></label></div><div className="timeline-list">{visibleItems.map((item) => { const source = sources.find((entry) => entry.id === item.source_id); return <article className="timeline-item" id={'timeline-item-' + item.id} key={item.id}><span className="timeline-marker">{item.kind === 'chat_message' ? '✳' : item.kind === 'photo' ? '▧' : '▤'}</span><div className="item-content"><div className="item-meta"><span>{item.occurred_at ? new Date(item.occurred_at).toLocaleString() : 'Date unknown'}</span><span className="dot-separator">·</span><span>{source?.name || 'Imported source'}</span></div><h3>{item.title}</h3>{item.kind === 'photo' && Boolean(item.metadata.ocr_status) && <div className="photo-ocr-state"><span>OCR: {String(item.metadata.ocr_status).replace('_', ' ')}</span>{['failed', 'cancelled'].includes(String(item.metadata.ocr_status)) && <button className="text-button" onClick={() => void retryPhotoOcr(item)}>Retry OCR</button>}</div>}{item.kind === 'photo' && <><PhotoImage itemId={item.id} token={token} />{disclosure?.available && <div className="photo-description"><button className="text-button" disabled={!user?.ai_consent_at || ['queued', 'running'].includes(String(item.metadata.description_status))} onClick={() => void describePhoto(item)}>{['queued', 'running'].includes(String(item.metadata.description_status)) ? 'Generating…' : photoDescriptions[item.id] || item.metadata.description_status === 'confirmed' ? 'Generate another draft' : item.metadata.description_status === 'draft' ? 'Review saved draft' : ['failed', 'cancelled'].includes(String(item.metadata.description_status)) ? 'Retry description' : 'Describe with AI'}</button><span className="small-note">Sends this sanitized photo to {disclosure.provider} after consent.</span>{photoDescriptions[item.id] && <><textarea value={photoDescriptions[item.id]} onChange={(event) => setPhotoDescriptions((current) => ({ ...current, [item.id]: event.target.value }))} rows={3} aria-label="Photo description draft" /><button className="secondary" onClick={() => void confirmPhotoDescription(item)}>Add description to timeline</button></>}</div>}</>}<p>{item.content_text.slice(0, 360)}{item.content_text.length > 360 ? '…' : ''}</p><div className="item-actions"><span className="source-tag">{String(item.source_locator.role || item.kind)}</span><button className="text-button" onClick={() => void exportItem(item)}>Export Markdown ↗</button><button className="text-button" onClick={() => void downloadSource(item)}>Download source ↗</button><button className="text-button danger-text" onClick={() => void deleteItem(item)}>Delete imported source</button></div></div></article> })}{visibleItems.length === 0 && <div className="empty-state"><span>◷</span><strong>Your timeline is ready</strong><p>Import a selected Markdown note or ChatGPT conversation to see it here.</p></div>}</div>{timelineCursor && <button className="secondary full" onClick={() => void loadMoreTimeline()}>Load more timeline items</button>}</div><aside className="panel source-rail"><div className="panel-heading"><div><p className="eyebrow">CONNECTED SOURCES</p><h2>Sources</h2></div><span className="count-pill">{sources.length}</span></div>{sources.length === 0 && <p className="muted">Your selected sources will appear here.</p>}{sources.slice(0, 5).map((source) => <div className="source-row" key={source.id}><span className="source-icon">{source.kind === 'photo' ? '▧' : source.kind === 'chatgpt_export' ? '✳' : '▤'}</span><div><strong>{source.name}</strong><small>{source.status.replace('_', ' ')}</small></div><span className={source.status === 'active' ? 'status-dot' : 'status-dot paused'} /></div>)}<button className="secondary full" onClick={() => setPage('account')}>Manage sources</button></aside></section></>}
       {page === 'search' && <section className="panel search-page">
         <div className="panel-heading"><div><p className="eyebrow">UNIFIED SEARCH</p><h2>Find anything you kept</h2></div></div>
@@ -510,7 +579,7 @@ function App() {
       {page === 'reviews' && schedule && <ReviewSchedulePanel schedule={schedule} timezone={user?.timezone || 'UTC'} consentEnabled={Boolean(user?.ai_consent_at)} onSave={saveSchedule} readyReview={readyReview} onOpenReview={(review) => document.getElementById('review-' + review.id)?.scrollIntoView({ behavior: 'smooth', block: 'center' })} />}
       {page === 'reviews' && dueReminders.length > 0 && <DueRemindersPanel reminders={dueReminders} onAction={updateReminder} />}
       {page === 'reviews' && <section className="review-grid"><div className="panel"><div className="panel-heading"><div><p className="eyebrow">A MOMENT TO REFLECT</p><h2>Start a weekly review</h2></div></div><p className="muted">Build an editable draft from this period’s timeline. Every generated fact links back to its source.</p><form className="review-form" onSubmit={generateReview}><label>From<input name="start" type="date" required /></label><label>Until <small>(exclusive)</small><input name="end" type="date" required /></label><label className="check-row"><input type="checkbox" checked={externalModel} disabled={!disclosure?.available || !user?.ai_consent_at} onChange={(event) => setExternalModel(event.target.checked)} /><span>Use external AI model<br /><small>Enable current provider consent in Account first.</small></span></label><button className="primary" disabled={busy}>{busy ? 'Preparing…' : 'Generate draft'}</button></form><div className="subsection"><div className="panel-heading"><h2>Reminders</h2></div><form className="reminder-form" onSubmit={createReminder}><input name="title" placeholder="What should you follow up on?" required /><input name="due_at" type="datetime-local" aria-label="Reminder due date" /><button className="secondary">Add reminder</button></form>{reminders.map((reminder) => <div className="reminder-row" id={'reminder-' + reminder.id} key={reminder.id}><div><strong>{reminder.title}</strong><small>{reminder.due_at ? new Date(reminder.due_at).toLocaleString() : 'No due date'} · {reminder.status}</small></div>{reminder.status !== 'completed' && reminder.status !== 'cancelled' && <><button className="text-button" onClick={() => void updateReminder(reminder, 'completed')}>Complete</button><button className="text-button" onClick={() => void updateReminder(reminder, 'snoozed')}>Snooze</button><button className="text-button" onClick={() => void updateReminder(reminder, 'cancelled')}>Dismiss</button></>}</div>)}</div></div><div className="review-list">{reviews.map((review) => <ReviewCard key={review.id + (review.final_text || "")} review={review} onSave={saveReview} onOpenSource={openSource} onExport={downloadReview} onCreateReminder={createReminderFromSuggestion} onUpdateSuggestion={updateSuggestion} />)}{reviews.length === 0 && <div className="panel empty-state"><span>✳</span><strong>Your reviews will appear here</strong><p>Choose a date range to make a draft from sourced timeline items.</p></div>}</div></section>}
-      {page === 'account' && <section className="account-grid"><div className="panel"><p className="eyebrow">PROFILE</p><h2>{user?.email}</h2><p className="muted">Timezone: {user?.timezone}</p><div className="subsection"><p className="eyebrow">MODEL DATA CONSENT</p>{disclosure?.available ? <><p className="muted">Provider: {disclosure.provider} · Model: {disclosure.model}</p><p className="muted">Data sent: {disclosure.data_sent}</p><p className="muted">Retention: {disclosure.retention}</p><p className="muted">Configured estimate: ${disclosure.input_cost_per_million_usd} per million input tokens and ${disclosure.output_cost_per_million_usd} per million output tokens. Per-call budget check: ${disclosure.max_cost_per_call_usd}. A call that fails or exceeds the estimate may still incur provider charges.</p>{disclosure.privacy_url && <p><a href={disclosure.privacy_url} target="_blank" rel="noreferrer">Provider privacy terms ↗</a></p>}<label className="check-row consent-check"><input type="checkbox" checked={consentAcknowledged} onChange={(event) => setConsentAcknowledged(event.target.checked)} /><span>I have reviewed the provider and data handling disclosure above.</span></label><p className="small-note">Current consent: {user?.ai_consent_at ? 'Enabled' : 'Off'}</p><div className="button-row"><button className="primary" disabled={!consentAcknowledged || Boolean(user?.ai_consent_at)} onClick={() => void setModelConsent(true)}>Enable external AI</button><button className="secondary" disabled={!user?.ai_consent_at} onClick={() => void setModelConsent(false)}>Turn off</button></div></> : <p className="muted">No external model is configured. Template-based reviews remain available, and no review data is sent to a model provider.</p>}</div><div className="subsection"><p className="eyebrow">YOUR DATA</p><p className="muted">Download a portable archive or permanently delete your account and stored records.</p><div className="button-row"><button className="secondary" onClick={() => void downloadAccountArchive()}>Download archive</button><button className="danger" onClick={() => void deleteAccount()}>Delete account</button></div></div></div><div className="panel"><div className="panel-heading"><div><p className="eyebrow">YOUR SELECTIONS</p><h2>Manage sources</h2></div></div>{sources.map((source) => <div className="manage-source" key={source.id}><div><strong>{source.name}</strong><small>{source.kind.replace('_', ' ')} · {source.status}</small><p className="source-scope">{sourceScopeDescription(source)}</p><small>Last import: {source.last_sync_at ? new Date(source.last_sync_at).toLocaleString() : 'Never'}</small></div><div className="button-row">{source.status === 'active' && <button className="text-button" onClick={() => void sourceAction(source, 'pause')}>Pause</button>}{source.status === 'paused' && <button className="text-button" onClick={() => void sourceAction(source, 'resume')}>Resume</button>}{source.status !== 'revoked' && <button className="text-button" onClick={() => void sourceAction(source, 'revoke')}>Revoke</button>}<button className="text-button danger-text" onClick={() => void sourceAction(source, 'delete')}>Delete data</button></div></div>)}{sources.length === 0 && <p className="muted">No sources yet.</p>}</div></section>}
+      {page === 'account' && <section className="account-grid"><div className="panel"><p className="eyebrow">PROFILE</p><h2>{user?.email}</h2><p className="muted">Timezone: {user?.timezone}</p><div className="subsection"><p className="eyebrow">MODEL DATA CONSENT</p>{disclosure?.available ? <><p className="muted">Provider: {disclosure.provider} · Model: {disclosure.model}</p><p className="muted">Data sent: {disclosure.data_sent}</p><p className="muted">Retention: {disclosure.retention}</p><p className="muted">Configured estimate: ${disclosure.input_cost_per_million_usd} per million input tokens and ${disclosure.output_cost_per_million_usd} per million output tokens. Per-call budget check: ${disclosure.max_cost_per_call_usd}. A call that fails or exceeds the estimate may still incur provider charges.</p>{disclosure.privacy_url && <p><a href={disclosure.privacy_url} target="_blank" rel="noreferrer">Provider privacy terms ↗</a></p>}<label className="check-row consent-check"><input type="checkbox" checked={consentAcknowledged} onChange={(event) => setConsentAcknowledged(event.target.checked)} /><span>I have reviewed the provider and data handling disclosure above.</span></label><p className="small-note">Current consent: {user?.ai_consent_at ? 'Enabled' : 'Off'}</p><div className="button-row"><button className="primary" disabled={!consentAcknowledged || Boolean(user?.ai_consent_at)} onClick={() => void setModelConsent(true)}>Enable external AI</button><button className="secondary" disabled={!user?.ai_consent_at} onClick={() => void setModelConsent(false)}>Turn off</button></div></> : <p className="muted">No external model is configured. Template-based reviews remain available, and no review data is sent to a model provider.</p>}</div><div className="subsection"><p className="eyebrow">YOUR DATA</p><p className="muted">Download a portable archive or permanently delete your account and stored records.</p><div className="button-row"><button className="secondary" onClick={() => void downloadAccountArchive()}>Download archive</button><button className="danger" onClick={() => void deleteAccount()}>Delete account</button></div></div></div><div className="panel"><div className="panel-heading"><div><p className="eyebrow">YOUR SELECTIONS</p><h2>Manage sources</h2></div></div>{sources.map((source) => <div className="manage-source" key={source.id}><div><strong>{source.name}</strong><small>{source.kind.replace('_', ' ')} · {source.status}</small><p className="source-scope">{sourceScopeDescription(source)}</p><small>Last import: {source.last_sync_at ? new Date(source.last_sync_at).toLocaleString() : 'Never'}</small><small>Cloud extraction: {source.cloud_consent_at ? 'Allowed' : 'Off'}</small></div><div className="button-row">{source.status === 'active' && <button className="text-button" onClick={() => void sourceAction(source, 'pause')}>Pause</button>}{source.status === 'paused' && <button className="text-button" onClick={() => void sourceAction(source, 'resume')}>Resume</button>}{source.status !== 'revoked' && <button className="text-button" onClick={() => void sourceAction(source, 'revoke')}>Revoke</button>}<button className="text-button" disabled={source.status === 'revoked' || source.status === 'deleting'} onClick={() => void setCloudConsent(source, !source.cloud_consent_at)}>{source.cloud_consent_at ? 'Turn off cloud extraction' : 'Allow cloud extraction'}</button><button className="text-button danger-text" onClick={() => void sourceAction(source, 'delete')}>Delete data</button></div></div>)}{sources.length === 0 && <p className="muted">No sources yet.</p>}</div></section>}
     </main></div>
 }
 
@@ -611,6 +680,451 @@ function PhotoImage({ itemId, token }: { itemId: string; token: string }) {
     return () => { active = false; if (objectUrl) URL.revokeObjectURL(objectUrl) }
   }, [itemId, token])
   return url ? <img className="timeline-photo" src={url} alt="Imported photo" /> : null
+}
+
+function reviewLabel(item: GraphReviewItem): string {
+  if (item.kind === 'entity') return [item.payload.name || '未命名实体', item.payload.type].filter(Boolean).join(' · ')
+  if (item.kind === 'relation') return item.payload.relation_type || '未命名关系'
+  if (item.kind === 'ontology') return '本体类型 · ' + (item.payload.name || '')
+  return item.kind
+}
+
+function percent(value: number): string {
+  return Math.round(value * 100) + '%'
+}
+
+function GraphPanel({ token, onError, onNotice, onPendingChange }: { token: string; onError: (message: string) => void; onNotice: (message: string) => void; onPendingChange: (total: number) => void }) {
+  const [entities, setEntities] = useState<GraphEntity[]>([])
+  const [relations, setRelations] = useState<GraphRelation[]>([])
+  const [pending, setPending] = useState<GraphReviewItem[]>([])
+  const [merges, setMerges] = useState<GraphMerge[]>([])
+  const [ontology, setOntology] = useState<OntologyType[]>([])
+  const [loading, setLoading] = useState(true)
+  const [selected, setSelected] = useState<string[]>([])
+  const [editing, setEditing] = useState('')
+  const [draft, setDraft] = useState('')
+  const [mergeSource, setMergeSource] = useState('')
+  const [mergeTarget, setMergeTarget] = useState('')
+  const [typeKind, setTypeKind] = useState<'entity' | 'relation'>('entity')
+  const [typeName, setTypeName] = useState('')
+  const [typeDescription, setTypeDescription] = useState('')
+
+  const load = useCallback(async () => {
+    try {
+      const [entityList, relationList, reviewList, mergeList, typeList] = await Promise.all([
+        api<{ items: GraphEntity[]; total: number }>('/graph/entities?limit=100', token),
+        api<{ items: GraphRelation[]; total: number }>('/graph/relations?limit=100', token),
+        api<{ items: GraphReviewItem[]; total: number }>('/graph/review?status=pending&limit=100', token),
+        api<{ items: GraphMerge[]; total: number }>('/graph/merges', token),
+        api<{ items: OntologyType[]; total: number }>('/ontology/types', token),
+      ])
+      setEntities(entityList.items)
+      setRelations(relationList.items)
+      setPending(reviewList.items)
+      setMerges(mergeList.items)
+      setOntology(typeList.items)
+      onPendingChange(reviewList.total)
+    } catch (e) {
+      onError(e instanceof Error ? e.message : '图谱数据加载失败。')
+    } finally {
+      setLoading(false)
+    }
+  }, [onError, onPendingChange, token])
+
+  // The graph page loads owner-scoped data after mount.
+  // eslint-disable-next-line react/set-state-in-effect
+  useEffect(() => { void load() }, [load])
+
+  async function decide(item: GraphReviewItem, action: 'approve' | 'reject') {
+    try {
+      await api('/graph/review/' + item.id + '/decision', token, { method: 'POST', body: JSON.stringify({ action }) })
+      setSelected((current) => current.filter((id) => id !== item.id))
+      await load()
+      onNotice(action === 'approve' ? '已批准待审项。' : '已拒绝待审项。')
+    } catch (e) { onError(e instanceof Error ? e.message : '待审操作失败。') }
+  }
+
+  async function bulk(action: 'approve' | 'reject') {
+    if (!selected.length) return
+    try {
+      await api('/graph/review/bulk', token, { method: 'POST', body: JSON.stringify({ item_ids: selected, action }) })
+      setSelected([])
+      await load()
+      onNotice(action === 'approve' ? '已批量批准待审项。' : '已批量拒绝待审项。')
+    } catch (e) { onError(e instanceof Error ? e.message : '批量操作失败。') }
+  }
+
+  async function saveEdit(item: GraphReviewItem) {
+    if (!draft.trim()) return
+    try {
+      await api('/graph/review/' + item.id, token, { method: 'PATCH', body: JSON.stringify({ name: draft.trim() }) })
+      setEditing('')
+      await load()
+      onNotice('待审实体已更新。')
+    } catch (e) { onError(e instanceof Error ? e.message : '待审实体更新失败。') }
+  }
+
+  async function mergeEntities() {
+    if (!mergeSource || !mergeTarget || mergeSource === mergeTarget) {
+      onError('请选择两个不同的实体。')
+      return
+    }
+    try {
+      await api('/graph/entities/' + mergeSource + '/merge', token, { method: 'POST', body: JSON.stringify({ target_entity_id: mergeTarget }) })
+      setMergeSource('')
+      setMergeTarget('')
+      await load()
+      onNotice('实体已合并，可在合并记录中撤销。')
+    } catch (e) { onError(e instanceof Error ? e.message : '合并失败。') }
+  }
+
+  async function undoMerge(log: GraphMerge) {
+    try {
+      await api('/graph/merges/' + log.id + '/undo', token, { method: 'POST' })
+      await load()
+      onNotice('已撤销合并并恢复证据与关系。')
+    } catch (e) { onError(e instanceof Error ? e.message : '撤销合并失败。') }
+  }
+
+  async function proposeType(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    try {
+      await api('/ontology/types', token, { method: 'POST', body: JSON.stringify({ kind: typeKind, name: typeName.trim(), description: typeDescription.trim() || null }) })
+      setTypeName('')
+      setTypeDescription('')
+      await load()
+      onNotice('已提交自定义本体提议。')
+    } catch (e) { onError(e instanceof Error ? e.message : '自定义本体提交失败。') }
+  }
+
+  async function decideType(entry: OntologyType, status: 'approved' | 'rejected') {
+    try {
+      await api('/ontology/types/' + entry.id + '/decision', token, { method: 'POST', body: JSON.stringify({ status }) })
+      await load()
+      onNotice(status === 'approved' ? '本体类型已批准。' : '本体类型已拒绝。')
+    } catch (e) { onError(e instanceof Error ? e.message : '本体类型操作失败。') }
+  }
+
+  const activeEntities = entities.filter((entity) => entity.status === 'active')
+  const entityName = (id: string) => entities.find((entity) => entity.id === id)?.name || id.slice(0, 8)
+
+  return <section className="graph-stack">
+    <section className="panel">
+      <div className="panel-heading"><div><p className="eyebrow">REVIEW QUEUE</p><h2>低置信度待审</h2></div><span className="count-pill">{pending.length}</span></div>
+      <p className="muted">低置信度或缺少原文证据的实体与关系会停在这里。批准后进入问答；拒绝会隐藏该条目。</p>
+      {loading ? <p className="muted" role="status">正在加载图谱…</p> : pending.length === 0 ? <div className="empty-state"><span>✓</span><strong>没有待审条目</strong><p>新的抽取结果会出现在这里。</p></div> : <>
+        <div className="button-row review-toolbar">
+          <label className="check-row compact"><input type="checkbox" checked={selected.length === pending.length && pending.length > 0} onChange={(event) => setSelected(event.target.checked ? pending.map((item) => item.id) : [])} /><span>全选</span></label>
+          <button className="secondary" disabled={!selected.length} onClick={() => void bulk('approve')}>批量批准</button>
+          <button className="text-button danger-text" disabled={!selected.length} onClick={() => void bulk('reject')}>批量拒绝</button>
+        </div>
+        {pending.map((item) => <div className="review-row" key={item.id}>
+          <input type="checkbox" aria-label={'选择待审 ' + reviewLabel(item)} checked={selected.includes(item.id)} onChange={(event) => setSelected(event.target.checked ? [...selected, item.id] : selected.filter((id) => id !== item.id))} />
+          <div className="review-row-main">
+            <strong>{reviewLabel(item)}</strong>
+            <small>{item.kind} · 置信度 {percent(item.confidence)}{item.reason ? ' · ' + item.reason : ''}</small>
+            {editing === item.id && <div className="edit-row"><input aria-label="待审名称" value={draft} onChange={(event) => setDraft(event.target.value)} /><button className="secondary" onClick={() => void saveEdit(item)}>保存</button><button className="text-button" onClick={() => setEditing('')}>取消</button></div>}
+          </div>
+          <div className="button-row">
+            {item.kind === 'entity' && <button className="text-button" onClick={() => { setEditing(item.id); setDraft(item.payload.name || '') }}>编辑</button>}
+            <button className="secondary" onClick={() => void decide(item, 'approve')}>批准</button>
+            <button className="text-button danger-text" onClick={() => void decide(item, 'reject')}>拒绝</button>
+          </div>
+        </div>)}
+      </>}
+    </section>
+
+    <section className="graph-grid">
+      <div className="panel">
+        <div className="panel-heading"><div><p className="eyebrow">EVIDENCE GRAPH</p><h2>图谱实体</h2></div><span className="count-pill">{entities.length}</span></div>
+        {entities.length === 0 && !loading && <p className="muted">暂无可展示的实体。先导入来源并抽取。</p>}
+        {entities.map((entity) => <div className="entity-row" key={entity.id}>
+          <div className="entity-row-main">
+            <strong>{entity.name}</strong>
+            <small>{entity.entity_type} · {entity.status} · 置信度 {percent(entity.confidence)}</small>
+            {entity.summary && <p>{entity.summary}</p>}
+          </div>
+          <details>
+            <summary>{entity.evidence.length} 条证据</summary>
+            {entity.evidence.map((evidence) => <p className="evidence" key={evidence.id}>{evidence.quote}<small>{evidence.availability}</small></p>)}
+            {entity.evidence.length === 0 && <p className="small-note">没有可用证据。</p>}
+          </details>
+        </div>)}
+      </div>
+
+      <div className="graph-stack">
+        <div className="panel">
+          <div className="panel-heading"><div><p className="eyebrow">RELATIONS</p><h2>关系</h2></div><span className="count-pill">{relations.length}</span></div>
+          {relations.length === 0 && <p className="muted">暂无关系。</p>}
+          {relations.map((relation) => <div className="entity-row" key={relation.id}>
+            <div className="entity-row-main">
+              <strong>{entityName(relation.from_entity_id)} → {entityName(relation.to_entity_id)}</strong>
+              <small>{relation.relation_type} · {relation.status} · 置信度 {percent(relation.confidence)}</small>
+            </div>
+            <span className="count-pill">{relation.evidence.length} 证据</span>
+          </div>)}
+        </div>
+
+        <div className="panel">
+          <div className="panel-heading"><div><p className="eyebrow">MERGE</p><h2>实体合并</h2></div><span className="count-pill">{merges.length}</span></div>
+          <form className="merge-form" onSubmit={(event) => { event.preventDefault(); void mergeEntities() }}>
+            <label>源实体<select value={mergeSource} onChange={(event) => setMergeSource(event.target.value)}><option value="">选择实体</option>{activeEntities.map((entity) => <option value={entity.id} key={entity.id}>{entity.name}</option>)}</select></label>
+            <label>合并到<select value={mergeTarget} onChange={(event) => setMergeTarget(event.target.value)}><option value="">选择实体</option>{activeEntities.map((entity) => <option value={entity.id} key={entity.id}>{entity.name}</option>)}</select></label>
+            <button className="secondary" disabled={activeEntities.length < 2}>合并</button>
+          </form>
+          <p className="small-note">合并保留别名与日志，撤销会恢复实体、证据与关系。</p>
+          {merges.map((log) => <div className="merge-row" key={log.id}>
+            <div><strong>{log.source_name || '已删除实体'} → {log.target_name || '已删除实体'}</strong><small>{log.status} · {log.evidence_count} 证据 · {log.relation_count} 关系</small></div>
+            {log.status === 'active' && <button className="text-button" onClick={() => void undoMerge(log)}>撤销合并</button>}
+          </div>)}
+        </div>
+
+        <div className="panel">
+          <div className="panel-heading"><div><p className="eyebrow">ONTOLOGY</p><h2>自定义本体</h2></div><span className="count-pill">{ontology.length}</span></div>
+          <form className="ontology-form" onSubmit={(event) => void proposeType(event)}>
+            <select aria-label="本体类型种类" value={typeKind} onChange={(event) => setTypeKind(event.target.value as 'entity' | 'relation')}><option value="entity">实体类型</option><option value="relation">关系类型</option></select>
+            <input aria-label="本体类型名称" placeholder="例如 habit" value={typeName} onChange={(event) => setTypeName(event.target.value)} required pattern="[a-z][a-z0-9_]{1,63}" />
+            <input aria-label="本体类型说明" placeholder="说明（可选）" value={typeDescription} onChange={(event) => setTypeDescription(event.target.value)} />
+            <button className="secondary">提议类型</button>
+          </form>
+          {ontology.length === 0 && <p className="muted">还没有自定义类型。模型提议的新类型也会显示在这里。</p>}
+          {ontology.map((entry) => <div className="ontology-row" key={entry.id}>
+            <div><strong>{entry.name}</strong><small>{entry.kind} · {entry.status} · {entry.source} · {entry.created_by} · v{entry.version}</small>{entry.description && <p>{entry.description}</p>}</div>
+            {entry.status === 'proposed' && <div className="button-row"><button className="text-button" onClick={() => void decideType(entry, 'approved')}>批准</button><button className="text-button danger-text" onClick={() => void decideType(entry, 'rejected')}>拒绝</button></div>}
+          </div>)}
+        </div>
+      </div>
+    </section>
+  </section>
+}
+
+function basisLabel(basis: QaFact['basis']): string {
+  if (basis === 'fact') return '事实'
+  if (basis === 'inference') return '推断'
+  return '不确定'
+}
+
+function intentLabel(intent: string | null): string {
+  if (!intent) return '未识别意图'
+  return ({ decision: '决定/承诺', project: '项目/目标', growth: '主题/成长', timeline: '时间线' } as Record<string, string>)[intent] || intent
+}
+
+function AnswerCard({ answer, onOpenCitation, onSuggestion }: { answer: QaAnswer; onOpenCitation: (itemId: string, sourceId: string) => void; onSuggestion: (suggestion: QaSuggestion) => void }) {
+  return <article className="answer-card">
+    <p className="answer-summary">{answer.summary}</p>
+    <div className="answer-meta">
+      <span className={'answer-badge ' + answer.status}>{answer.status === 'answered' ? '有证据' : '证据不足'}</span>
+      <span>置信度 {percent(answer.confidence)}</span>
+      <span>{intentLabel(answer.intent)}</span>
+      <span>{answer.latency_ms} ms</span>
+    </div>
+    {answer.facts.length > 0 && <div className="answer-section">
+      <p className="eyebrow">结构化事实</p>
+      {answer.facts.map((fact, index) => <div className="fact-row" key={String(index)}>
+        <div><strong>{fact.label}</strong><small>{fact.detail}</small></div>
+        <span className={'basis-badge ' + fact.basis}>{basisLabel(fact.basis)} · {percent(fact.confidence)}</span>
+      </div>)}
+    </div>}
+    {answer.citations.length > 0 && <div className="answer-section">
+      <p className="eyebrow">原文引用</p>
+      {answer.citations.map((citation) => <button type="button" className="citation-row" key={citation.evidence_id} onClick={() => onOpenCitation(citation.source_item_id, citation.source_id)}>
+        <strong>{citation.item_title}</strong>
+        <small>{citation.source_name} · {citation.occurred_at ? new Date(citation.occurred_at).toLocaleString() : '日期未知'} · {percent(citation.confidence)}</small>
+        <span>{citation.quote}</span>
+      </button>)}
+    </div>}
+    {answer.timeline_matches.length > 0 && <div className="answer-section">
+      <p className="eyebrow">相关时间线</p>
+      {answer.timeline_matches.map((match) => <button type="button" className="citation-row" key={match.source_item_id} onClick={() => onOpenCitation(match.source_item_id, match.source_id)}>
+        <strong>{match.title}</strong>
+        <small>{match.source_name} · {match.occurred_at ? new Date(match.occurred_at).toLocaleString() : '日期未知'}</small>
+        <span>{match.snippet}</span>
+      </button>)}
+    </div>}
+    {answer.review_matches.length > 0 && <div className="answer-section">
+      <p className="eyebrow">相关复盘</p>
+      {answer.review_matches.map((match) => <p className="small-note" key={match.id}>{new Date(match.period_start).toLocaleDateString()} — {new Date(match.period_end).toLocaleDateString()} · {match.snippet}</p>)}
+    </div>}
+    {answer.missing_info.length > 0 && <div className="answer-section">
+      <p className="eyebrow">缺失信息</p>
+      {answer.missing_info.map((item) => <p className="small-note" key={item}>· {item}</p>)}
+    </div>}
+    {answer.suggestions.length > 0 && <div className="answer-section">
+      <p className="eyebrow">行动建议</p>
+      <div className="button-row">{answer.suggestions.map((suggestion) => <button className="secondary" key={suggestion.label} onClick={() => onSuggestion(suggestion)}>{suggestion.label}</button>)}</div>
+    </div>}
+  </article>
+}
+
+function AskPanel({ token, sources, onError, onNotice, onOpenCitation }: { token: string; sources: Source[]; onError: (message: string) => void; onNotice: (message: string) => void; onOpenCitation: (itemId: string, sourceId: string) => void }) {
+  const [threads, setThreads] = useState<QaThread[]>([])
+  const [active, setActive] = useState<QaThread | null>(null)
+  const [entities, setEntities] = useState<GraphEntity[]>([])
+  const [sourceId, setSourceId] = useState('')
+  const [entityId, setEntityId] = useState('')
+  const [start, setStart] = useState('')
+  const [end, setEnd] = useState('')
+  const [question, setQuestion] = useState('')
+  const [asking, setAsking] = useState(false)
+  const [loading, setLoading] = useState(true)
+
+  function applyScope(scope: QaScope) {
+    setSourceId(scope.source_ids[0] || '')
+    setEntityId(scope.entity_ids[0] || '')
+    setStart(scope.start ? scope.start.slice(0, 10) : '')
+    setEnd(scope.end ? scope.end.slice(0, 10) : '')
+  }
+
+  useEffect(() => {
+    let cancelled = false
+    void (async () => {
+      try {
+        const [threadList, lastScope, entityList] = await Promise.all([
+          api<{ items: QaThread[]; total: number }>('/qa/threads', token),
+          api<{ thread_id: string | null; scope: QaScope }>('/qa/scope', token),
+          api<{ items: GraphEntity[]; total: number }>('/graph/entities?limit=100', token),
+        ])
+        if (cancelled) return
+        setThreads(threadList.items)
+        setEntities(entityList.items)
+        applyScope(lastScope.scope)
+        if (threadList.items.length > 0) {
+          const full = await api<QaThread>('/qa/threads/' + threadList.items[0].id, token)
+          if (!cancelled) { setActive(full); applyScope(full.scope) }
+        }
+      } catch (e) {
+        if (!cancelled) onError(e instanceof Error ? e.message : '问答历史加载失败。')
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    })()
+    return () => { cancelled = true }
+  }, [onError, token])
+
+  function currentScope(): QaScope {
+    return {
+      source_ids: sourceId ? [sourceId] : [],
+      entity_ids: entityId ? [entityId] : [],
+      start: start ? start + 'T00:00:00' : null,
+      end: end ? end + 'T23:59:59' : null,
+    }
+  }
+
+  async function selectThread(threadId: string) {
+    try {
+      const full = await api<QaThread>('/qa/threads/' + threadId, token)
+      setActive(full)
+      applyScope(full.scope)
+    } catch (e) { onError(e instanceof Error ? e.message : '问答线程加载失败。') }
+  }
+
+  async function ask(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const text = question.trim()
+    if (!text || asking) return
+    setAsking(true)
+    try {
+      let thread = active
+      if (!thread) {
+        thread = await api<QaThread>('/qa/threads', token, { method: 'POST', body: JSON.stringify({ title: text.slice(0, 60), scope: currentScope() }) })
+      }
+      const updated = await api<QaThread>('/qa/threads/' + thread.id + '/messages', token, { method: 'POST', body: JSON.stringify({ question: text, scope: currentScope() }) })
+      setActive(updated)
+      setQuestion('')
+      setThreads((current) => [updated, ...current.filter((entry) => entry.id !== updated.id)].map((entry) => ({ ...entry, messages: [] })))
+    } catch (e) {
+      onError(e instanceof Error ? e.message : '提问失败。')
+    } finally {
+      setAsking(false)
+    }
+  }
+
+  async function deleteThread(threadId: string) {
+    if (!window.confirm('删除这条问答历史？此操作不可撤销。')) return
+    try {
+      await api('/qa/threads/' + threadId, token, { method: 'DELETE' })
+      setThreads((current) => current.filter((entry) => entry.id !== threadId))
+      if (active?.id === threadId) setActive(null)
+      onNotice('问答历史已删除。')
+    } catch (e) { onError(e instanceof Error ? e.message : '问答历史删除失败。') }
+  }
+
+  async function exportThread(threadId: string, format: 'markdown' | 'json') {
+    try {
+      const response = await fetch(API + '/qa/threads/' + threadId + '/export?format=' + format, { headers: { Authorization: 'Bearer ' + token } })
+      if (!response.ok) throw new Error('导出的问答历史不可用。')
+      const blob = await response.blob()
+      const link = document.createElement('a')
+      link.href = URL.createObjectURL(blob)
+      link.download = 'qa-thread-' + threadId.slice(0, 8) + (format === 'json' ? '.json' : '.md')
+      link.click()
+      URL.revokeObjectURL(link.href)
+    } catch (e) { onError(e instanceof Error ? e.message : '问答历史导出失败。') }
+  }
+
+  async function runSuggestion(suggestion: QaSuggestion) {
+    if (suggestion.kind === 'reminder') {
+      try {
+        await api('/reminders', token, { method: 'POST', body: JSON.stringify({ title: suggestion.label }) })
+        onNotice('已创建提醒。')
+      } catch (e) { onError(e instanceof Error ? e.message : '创建提醒失败。') }
+      return
+    }
+    if (suggestion.source_item_id) {
+      onOpenCitation(suggestion.source_item_id, '')
+      return
+    }
+    onNotice('请到图谱或时间线中查看这条建议。')
+  }
+
+  function clearScope() {
+    setSourceId('')
+    setEntityId('')
+    setStart('')
+    setEnd('')
+  }
+
+  const scopeEntities = entities.filter((entity) => ['project', 'goal', 'topic'].includes(entity.entity_type))
+
+  return <section className="ask-layout">
+    <aside className="panel ask-history">
+      <div className="panel-heading"><div><p className="eyebrow">HISTORY</p><h2>问答历史</h2></div><button className="text-button" onClick={() => setActive(null)}>新提问</button></div>
+      {loading && <p className="muted" role="status">正在加载…</p>}
+      {!loading && threads.length === 0 && <p className="muted">还没有问答记录。提出第一个问题后会保存在本机。</p>}
+      {threads.map((thread) => <div className={'thread-item' + (active?.id === thread.id ? ' active' : '')} key={thread.id}>
+        <button type="button" className="thread-open" onClick={() => void selectThread(thread.id)}><strong>{thread.title}</strong><small>{new Date(thread.updated_at).toLocaleString()}</small></button>
+        <div className="button-row"><button className="text-button" onClick={() => void exportThread(thread.id, 'markdown')}>导出</button><button className="text-button danger-text" onClick={() => void deleteThread(thread.id)}>删除</button></div>
+      </div>)}
+    </aside>
+
+    <div className="graph-stack">
+      <section className="panel">
+        <div className="panel-heading"><div><p className="eyebrow">SCOPE</p><h2>检索范围</h2></div><button className="text-button" onClick={clearScope}>清空范围</button></div>
+        <div className="scope-grid">
+          <label>来源<select value={sourceId} onChange={(event) => setSourceId(event.target.value)}><option value="">全部来源</option>{sources.map((source) => <option value={source.id} key={source.id}>{source.name}</option>)}</select></label>
+          <label>项目/主题<select value={entityId} onChange={(event) => setEntityId(event.target.value)}><option value="">全部</option>{scopeEntities.map((entity) => <option value={entity.id} key={entity.id}>{entity.name}</option>)}</select></label>
+          <label>开始<input type="date" value={start} onChange={(event) => setStart(event.target.value)} /></label>
+          <label>结束<input type="date" value={end} onChange={(event) => setEnd(event.target.value)} /></label>
+        </div>
+        <p className="small-note">范围会随当前线程记住；撤回或删除的来源不会进入答案。</p>
+      </section>
+
+      <section className="panel ask-chat">
+        <div className="panel-heading"><div><p className="eyebrow">EVIDENCE Q&A</p><h2>{active ? active.title : '新的提问'}</h2></div><span className="count-pill">{active?.messages.length || 0} 条</span></div>
+        <div className="chat-log">
+          {!active && !loading && <div className="empty-state"><span>✦</span><strong>从你的证据图谱提问</strong><p>例如“我和谁约定了什么？”“这个项目进展如何？”“上周发生了什么？”</p></div>}
+          {active?.messages.map((message) => message.role === 'user'
+            ? <div className="chat-message user" key={message.id}><p>{message.content}</p></div>
+            : message.answer ? <AnswerCard key={message.id} answer={message.answer} onOpenCitation={onOpenCitation} onSuggestion={(suggestion) => void runSuggestion(suggestion)} /> : null)}
+          {asking && <p className="muted" role="status">正在检索证据并生成回答…</p>}
+        </div>
+        <form className="ask-form" onSubmit={(event) => void ask(event)}>
+          <input aria-label="输入问题" value={question} onChange={(event) => setQuestion(event.target.value)} placeholder="问一个关于你的项目、决定、技能或时间线的问题" />
+          <button className="primary" disabled={asking || !question.trim()}>{asking ? '检索中…' : '提问'}</button>
+        </form>
+      </section>
+    </div>
+  </section>
 }
 
 export default App

@@ -23,6 +23,20 @@ from personal_ai_life_os.parsers.chatgpt_export import (
     parse_chatgpt_export,
     select_chatgpt_export,
 )
+from personal_ai_life_os.parsers.document import (
+    PARSER_VERSION as DOCUMENT_PARSER_VERSION,
+)
+from personal_ai_life_os.parsers.document import (
+    UnsupportedDocumentError,
+    parse_document,
+)
+from personal_ai_life_os.parsers.generic_chat import (
+    PARSER_VERSION as GENERIC_CHAT_PARSER_VERSION,
+)
+from personal_ai_life_os.parsers.generic_chat import (
+    UnsupportedChatExportError,
+    parse_generic_chat,
+)
 from personal_ai_life_os.parsers.memory_markdown import (
     PARSER_VERSION as MEMORY_PARSER_VERSION,
 )
@@ -66,16 +80,23 @@ def _parser_for(
     user_timezone: str,
     defer_photo_ocr: bool,
 ) -> tuple[list[ParsedItem], str, bytes, str]:
-    if source.kind == "memory_markdown":
-        if not filename.lower().endswith((".md", ".markdown")):
+    if source.kind in {"memory_markdown", "document"}:
+        if source.kind == "memory_markdown" and not filename.lower().endswith((".md", ".markdown")):
             raise IngestionFailure("unsupported_file_type", "Select a Markdown file ending in .md.")
         try:
-            text = payload.decode("utf-8-sig")
+            if source.kind == "memory_markdown":
+                text = payload.decode("utf-8-sig")
+                parsed = parse_memory_markdown(text, _safe_filename(filename))
+                parser_version = MEMORY_PARSER_VERSION
+            else:
+                parsed = parse_document(payload, _safe_filename(filename))
+                parser_version = DOCUMENT_PARSER_VERSION
         except UnicodeDecodeError as error:
             raise IngestionFailure("invalid_encoding", "The Markdown file must be UTF-8 encoded.") from error
-        parsed = parse_memory_markdown(text, _safe_filename(filename))
-        normalized = []
+        except UnsupportedDocumentError as error:
+            raise IngestionFailure("unsupported_document", str(error)) from error
         zone = ZoneInfo(user_timezone)
+        normalized = []
         for item in parsed:
             if item.metadata.get("date_precision") == "day" and item.occurred_at is not None:
                 local_day = item.occurred_at.date()
@@ -88,7 +109,15 @@ def _parser_for(
                 )
             else:
                 normalized.append(item)
-        return normalized, MEMORY_PARSER_VERSION, payload, upload_content_type
+        return normalized, parser_version, payload, upload_content_type
+    if source.kind == "chat_export":
+        if not filename.lower().endswith((".json", ".jsonl")):
+            raise IngestionFailure("unsupported_file_type", "Select a JSON or JSONL chat export.")
+        try:
+            items = parse_generic_chat(payload, _safe_filename(filename))
+        except UnsupportedChatExportError as error:
+            raise IngestionFailure("unsupported_export", str(error)) from error
+        return items, GENERIC_CHAT_PARSER_VERSION, payload, upload_content_type or "application/json"
     if source.kind == "chatgpt_export":
         if not filename.lower().endswith(".json"):
             raise IngestionFailure("unsupported_file_type", "Select the ChatGPT conversations JSON export.")

@@ -47,6 +47,12 @@ The MVP uses a database-backed queue with leases, bounded retries, and owner-sco
 6. **Confirm and export:** the user edits and confirms review text, creates or updates reminders, and exports notes to Markdown. CLI export uses stable IDs and detects hand-edited files.
 7. **Delete:** source or account deletion records a durable tombstone before removing data. Startup replays tombstones before serving a restored database.
 
+## Evidence graph (v0.5)
+
+Manually selected source items can be sent to the configured OpenAI-compatible provider for graph extraction. The service returns entities, relations, exact quotes, and confidence; high-confidence records become active, low-confidence records enter a review state, and every record keeps item-level evidence. Source-level cloud consent is required, and the monthly/per-call model budget is enforced. A completed identical batch is idempotent. Low-confidence items can be edited, approved, or rejected in the review queue; duplicate entities can be merged through aliases with an undo snapshot, and approved custom ontology types enter later extraction prompts.
+
+The Q&A layer answers locally without a model call. It retrieves active evidence from approved entities and relations, filters by source, project/topic, and date range, excludes revoked sources, deleted items, and inactive evidence, and returns facts, citations, confidence, fact/inference/uncertain labels, missing information, and action suggestions. Question threads are stored locally, remember the last scope, and can be exported or deleted. Rule insights, agent actions, and plugins remain later v0.5 work.
+
 ## Data entities
 
 - **User:** authentication, timezone, current model consent, and deletion state.
@@ -57,6 +63,11 @@ The MVP uses a database-backed queue with leases, bounded retries, and owner-sco
 - **Review:** requested period, cited source items, model metadata, queued/draft/confirmed state, and user-confirmed text.
 - **Reminder:** user-owned action with optional source and memory references.
 - **ModelRun:** provider, model, purpose, status, prompt version, latency, and token counts without source content.
+- **GraphEntity / GraphRelation:** owner-scoped nodes and edges with type, name, confidence, status, and optional merge target.
+- **GraphEvidence:** quote, source, item, locator, confidence, and availability (`active`, `revoked`, `deleted`) linking a graph record to its origin.
+- **ExtractionRun / GraphReviewItem:** model/provider/cost metadata for a selected batch and low-confidence records awaiting review.
+- **EntityAlias / EntityMergeLog / OntologyType:** durable aliases, reversible merge snapshots, and proposed or approved custom entity/relation types with creator and version.
+- **QaThread / QaMessage:** local question threads with remembered scope, stored questions, and structured answers with citations.
 
 ## Search and limits
 

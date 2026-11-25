@@ -1,5 +1,6 @@
 """Source connection management and authorized source downloads."""
 
+from datetime import UTC, datetime
 from io import BytesIO
 from typing import Annotated
 
@@ -9,12 +10,14 @@ from sqlalchemy import select
 
 from personal_ai_life_os.api.deps import CurrentUserDep, SessionDep
 from personal_ai_life_os.api.schemas import (
+    SourceCloudConsentRequest,
     SourceCreateRequest,
     SourceResponse,
     SourceScopeRequest,
     SourceStatusRequest,
     SyncRunResponse,
 )
+from personal_ai_life_os.config import Settings
 from personal_ai_life_os.models import (
     SourceConnection,
     SourceItem,
@@ -25,6 +28,7 @@ from personal_ai_life_os.services.deletion import (
     request_source_deletion,
     scrub_source_derivatives,
 )
+from personal_ai_life_os.services.graph_evidence import mark_source_evidence_unavailable
 from personal_ai_life_os.services.jobs import cancel_jobs_for_source
 from personal_ai_life_os.storage import ObjectStore
 
@@ -147,6 +151,41 @@ def update_source_scope(
     return source
 
 
+@router.patch("/sources/{source_id}/cloud-consent", response_model=SourceResponse)
+def update_source_cloud_consent(
+    source_id: str,
+    payload: SourceCloudConsentRequest,
+    request: Request,
+    user: CurrentUserDep,
+    session: SessionDep,
+) -> SourceConnection:
+    source = _source_or_404(session, source_id, user.id)
+    if source.status not in {"active", "paused"}:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "source_not_eligible",
+                "message": "Resume this source before changing cloud extraction consent.",
+            },
+        )
+    config: Settings = request.app.state.settings
+    if payload.enabled and payload.consent_version != config.graph_cloud_consent_version:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "cloud_consent_version_mismatch",
+                "message": "Reload the current cloud extraction disclosure before enabling it.",
+            },
+        )
+    source.cloud_consent_at = datetime.now(UTC) if payload.enabled else None
+    source.cloud_consent_version = (
+        payload.consent_version if payload.enabled else None
+    )
+    session.commit()
+    session.refresh(source)
+    return source
+
+
 @router.post("/sources/{source_id}/revoke", response_model=SourceResponse)
 def revoke_source(
     source_id: str,
@@ -160,6 +199,12 @@ def revoke_source(
             detail={"code": "source_deleting", "message": "This source is being deleted."},
         )
     source.status = "revoked"
+    mark_source_evidence_unavailable(
+        session,
+        owner_id=user.id,
+        source_id=source.id,
+        availability="revoked",
+    )
     cancel_jobs_for_source(session, source.id, reason="source_revoked")
     session.commit()
     session.refresh(source)

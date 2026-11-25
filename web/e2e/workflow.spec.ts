@@ -135,6 +135,9 @@ test('selects, traces, reviews, exports and revokes synthetic content', async ({
   await page.unroute('**/api/v1/search?**')
 
   await page.getByRole('button', { name: /Account & sources/ }).click()
+  const notes = page.locator('.manage-source').filter({ hasText: 'pagination.md' })
+  await notes.getByRole('button', { name: 'Allow cloud extraction' }).click()
+  await expect(notes.getByText('Cloud extraction: Allowed')).toBeVisible()
   const chat = page.locator('.manage-source').filter({ hasText: 'conversations.json' })
   await chat.getByRole('button', { name: 'Revoke' }).click()
   await expect(chat.getByText(/· revoked/)).toBeVisible()
@@ -148,6 +151,55 @@ test('selects, traces, reviews, exports and revokes synthetic content', async ({
   await expect(page.locator('.timeline-item').first()).toBeVisible()
   await page.locator('.timeline-item').first().getByRole('button', { name: 'Delete imported source' }).click()
   expect(deleteMessage).toContain('every timeline entry created from that source')
+})
+
+test('asks a Chinese question, refuses without evidence, and deletes history', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Create an account' }).click()
+  await page.getByLabel('Email').fill(`browser-qa-${randomUUID()}@example.test`)
+  await page.getByLabel('Password').fill('synthetic-browser-password')
+  await page.getByRole('button', { name: 'Create account', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Timeline' })).toBeVisible()
+
+  await page.getByRole('button', { name: /提问/ }).click()
+  await expect(page.getByRole('heading', { name: '提问', exact: true })).toBeVisible()
+  await page.getByLabel('输入问题').fill('我和谁约定了什么？')
+  await page.getByRole('button', { name: '提问', exact: true }).click()
+  await expect(page.getByText('证据不足', { exact: true })).toBeVisible()
+  await expect(page.getByText('没有找到可靠证据来回答这个问题。', { exact: false })).toBeVisible()
+  await expect(page.getByText('缺失信息', { exact: true })).toBeVisible()
+  await expect(page.locator('.thread-item')).toHaveCount(1)
+  await expect(page.locator('.thread-item')).toContainText('我和谁约定了什么？')
+
+  page.once('dialog', (dialog) => dialog.accept())
+  await page.locator('.thread-item').first().getByRole('button', { name: '删除' }).click()
+  await expect(page.locator('.thread-item')).toHaveCount(0)
+  await expect(page.getByText('问答历史已删除。')).toBeVisible()
+})
+
+test('approves a low-confidence item from the inline review queue', async ({ page }) => {
+  const review = { id: 'review-1', kind: 'entity', payload: { entity_id: 'entity-1', name: 'Low confidence entity', type: 'project' }, confidence: 0.55, status: 'pending', reason: 'low_confidence', extraction_run_id: null, created_at: new Date().toISOString(), resolved_at: null }
+  await page.route('**/api/v1/graph/review?status=pending&limit=1', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ total: 1, items: [] }) }))
+  await page.route('**/api/v1/graph/review?status=pending&limit=100', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ total: 1, items: [review] }) }))
+  await page.route('**/api/v1/graph/review/review-1/decision', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ...review, status: 'approved' }) }))
+  await page.route('**/api/v1/graph/entities?limit=100', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ total: 0, items: [] }) }))
+  await page.route('**/api/v1/graph/relations?limit=100', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ total: 0, items: [] }) }))
+  await page.route('**/api/v1/graph/merges', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ total: 0, items: [] }) }))
+  await page.route('**/api/v1/ontology/types', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ total: 0, items: [] }) }))
+
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Create an account' }).click()
+  await page.getByLabel('Email').fill(`browser-review-${randomUUID()}@example.test`)
+  await page.getByLabel('Password').fill('synthetic-browser-password')
+  await page.getByRole('button', { name: 'Create account', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Timeline' })).toBeVisible()
+  await expect(page.getByText(/条低置信度图谱条目待审/)).toBeVisible()
+
+  await page.getByRole('button', { name: /图谱与待审/ }).click()
+  await expect(page.getByRole('heading', { name: '低置信度待审' })).toBeVisible()
+  await expect(page.getByText('Low confidence entity')).toBeVisible()
+  await page.getByRole('button', { name: '批准', exact: true }).click()
+  await expect(page.getByText('已批准待审项。')).toBeVisible()
 })
 
 test('enforces photo directory limits and reports partial imports', async ({ page }, testInfo) => {
