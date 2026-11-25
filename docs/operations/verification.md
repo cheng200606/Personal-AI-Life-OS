@@ -29,7 +29,7 @@
 - Import: 30 API imports, 500 parsed Markdown sections each, 50,498-byte file. P95 was 1,669.89 ms. Target: ≤30,000 ms.
 - The benchmark ran against local SQLite and the in-process test client. It does not establish hosted PostgreSQL throughput or public-network latency.
 
-The current test set also exercises model cost estimation and pricing disclosure, per-call budget fallback, estimated failed-call costs, cost fields in account archives and restricted metrics, and source-linked suggested reminders. Web verification includes selected-upload scope disclosure, source import status, consent revocation, reminder dismissal, and timeline pagination.
+The recorded API suite exercises model cost estimation and pricing disclosure, per-call budget fallback, estimated failed-call costs, cost fields in account archives and restricted metrics, and source-linked suggested reminders. Web CI runs lint and build. The UI contains selected-upload scope disclosure, source import status, consent revocation, reminder dismissal, and timeline pagination. Browser execution of those paths is pending dedicated evidence.
 
 ## Not verified
 

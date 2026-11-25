@@ -15,10 +15,11 @@ This status reflects repository implementation and local checks. It does not mea
 - UTF-8 Markdown and supported ChatGPT JSON parsers; source and account deletion with durable tombstone replay.
 - Automated tests cover parser behavior, idempotency, owner isolation, import/export, deletion, and account archive.
 
-## M2a — Searchable timeline and text Alpha: implemented
+## M2a — Searchable timeline implemented; text Alpha study pending
 
 - React/TypeScript web application for authentication, selected imports, source management, timeline filtering/search, provenance inspection, and Markdown export.
 - CLI and web paths work without Swagger. Keyword search is a bounded SQL `LIKE` query; full-text and semantic search remain post-MVP.
+- Browser workflow, keyboard accessibility, Obsidian compatibility, and participant outcomes need dedicated acceptance evidence.
 
 ## M3 — Reviews and reminders: implemented
 
@@ -32,12 +33,12 @@ This status reflects repository implementation and local checks. It does not mea
 - Two-owner API tests cover isolation; source/account deletion replay is exercised with synthetic data.
 - **Pending:** actual TLS/DNS and cloud configuration, private bucket policy and lifecycle verification, hosted database/object authorization tests, production dashboards, backup restore exercise, and review by an operator before inviting real users.
 
-## M2b — Photos and complete MVP: implementation present; release gates pending
+## M2b — Photo implementation present; end-to-end acceptance pending
 
 - User-selected JPEG, PNG, and WebP imports, including up to ten files or a selected directory, local preview, capture date/timezone form for a single photo, metadata stripping, searchable OCR, source references, and optional consent-gated photo description.
 - Database-backed leased jobs cover photo OCR, requested external weekly reviews, and requested photo descriptions. Job status, retry controls, source/consent cancellation, and queue metrics are implemented.
 - Synthetic tests cover EXIF/GPS stripping, OCR behavior, descriptions, search, access scope, and deletion.
-- **Pending:** deployment-specific OCR/container exercise, hosted privacy and deletion verification, and the shared release gates in M4.
+- **Pending:** browser file/folder batch acceptance, real OCR in the target image, worker recovery coverage, hosted privacy and deletion verification, and the shared release gates in M4.
 
 ## Release and follow-up
 

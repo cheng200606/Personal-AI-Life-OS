@@ -221,6 +221,8 @@ def generate_review(
             Review.period_end == end_at,
         )
     )
+    if existing and existing.status == "processing":
+        raise HTTPException(409, detail={"code": "review_processing", "message": "Wait for the review draft to finish."})
     if existing and existing.status == "confirmed":
         raise HTTPException(
             409,
@@ -316,8 +318,7 @@ def generate_review(
                 },
                 max_attempts=1,
             )
-            draft["model"]["job_id"] = job.id
-            existing.draft_json = draft
+            existing.draft_json = {**draft, "model": {**draft["model"], "job_id": job.id}}
             session.commit()
             session.refresh(existing)
             return _response(existing)
@@ -424,6 +425,8 @@ def update_review(
     session: SessionDep,
 ) -> ReviewResponse:
     review = _review_or_404(session, review_id, user.id)
+    if review.status == "processing":
+        raise HTTPException(409, detail={"code": "review_processing", "message": "Wait for the review draft to finish."})
     if review.status == "invalidated":
         raise HTTPException(
             409,

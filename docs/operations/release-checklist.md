@@ -7,7 +7,7 @@ This checklist separates repository evidence from hosting and user research evid
 - [x] Python lint and tests pass locally.
 - [x] Web lint and production build pass locally.
 - [x] Alembic schema is current and both Compose configurations parse.
-- [x] [GitHub Actions Linux matrix and Docker Compose smoke](https://github.com/cheng200606/Personal-AI-Life-OS/actions/runs/45465885873) pass for the committed MVP.
+- [x] [GitHub Actions Linux matrix and Docker Compose smoke](https://github.com/cheng200606/Personal-AI-Life-OS/actions/runs/45466928521) pass for the audited baseline `55831c2`. The smoke checks startup and readiness.
 - [x] Owner-scoped API tests include two users, import/export, source/account deletion, reviews, reminders, and photo paths.
 - [x] Synthetic review evaluation covers 30 scenarios: conflicts, insufficient evidence, timezone boundaries, duplicates, and model failure fallback.
 - [x] Support matrix, deployment guide, and backup/restore runbook are published in the repository.
@@ -16,6 +16,7 @@ This checklist separates repository evidence from hosting and user research evid
 ## Required before real-data private beta
 
 - [ ] Deploy with TLS, invitation-only registration, strong separate secrets, private PostgreSQL, private S3, and server-side encryption.
+- [ ] Run browser and Obsidian acceptance on the release candidate. Verify photo-folder import and real OCR in the target image, and confirm PostgreSQL worker recovery through a restart.
 - [ ] Verify the complete API and object-store permission matrix with two real test accounts: anonymous, wrong owner, revoked, paused, deleting, and deleted access.
 - [ ] Test the exact production bucket lifecycle and prove all versions and delete markers for a source are removed by the deletion endpoint.
 - [ ] Run a database restore and verify tombstones replay before readiness. Test a full object-store recovery and independently preserve deletions newer than the selected snapshot.

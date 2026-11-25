@@ -602,7 +602,7 @@ def _execute_weekly_review(session_factory: sessionmaker, job: JobEnvelope, conf
     with session_factory() as session:
         review = session.get(Review, job.review_id) if job.review_id else None
         user = session.get(User, job.owner_id)
-        if review is None or review.status == "invalidated" or user is None:
+        if review is None or review.status != "processing" or user is None:
             raise RetryableJobError("review_unavailable")
         items = [
             item
@@ -684,7 +684,7 @@ def _execute_weekly_review(session_factory: sessionmaker, job: JobEnvelope, conf
         review = session.get(Review, review_id)
         if current_job is None or current_job.status != "running":
             return {"cancelled": True}
-        if review is None or review.status == "invalidated":
+        if review is None or review.status != "processing":
             current_job.status = "cancelled"
             current_job.error_code = "review_unavailable"
             current_job.completed_at = now

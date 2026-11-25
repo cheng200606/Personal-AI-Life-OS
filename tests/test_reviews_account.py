@@ -111,6 +111,58 @@ def test_model_consent_can_be_revoked_without_reacknowledging(client) -> None:
     assert revoked.json()["ai_consent_at"] is None
 
 
+def test_queued_review_cannot_overwrite_a_user_confirmation(client, monkeypatch) -> None:
+    import httpx
+
+    from personal_ai_life_os.api.routes import reviews
+    from personal_ai_life_os.services.jobs import run_background_job_once
+
+    token = token_for(client, "queued-review@example.com")
+    import_memory(client, token)
+    state = client.app.state
+    state.settings.processing_mode = "worker"
+    state.settings.model_provider = "openai"
+    state.settings.openai_api_key = "synthetic-api-key"
+    configure_synthetic_model_pricing(state.settings)
+    headers = {"Authorization": "Bearer " + token}
+    consent = {"enabled": True, "disclosure_version": state.settings.model_disclosure_version}
+    assert client.put("/api/v1/auth/ai-consent", headers=headers, json=consent).status_code == 200
+    period = {"period_start": "2026-11-16", "period_end": "2026-11-18"}
+    generation = client.post(
+        "/api/v1/reviews/generate", headers=headers, json={**period, "use_external_model": True}
+    )
+    assert generation.status_code == 201, generation.text
+    review = generation.json()
+    assert review["status"] == "processing"
+    review_path = "/api/v1/reviews/" + review["id"]
+    job_id = review["draft"]["model"]["job_id"]
+    assert client.get(review_path, headers=headers).json()["draft"]["model"]["job_id"] == job_id
+    retry_path = "/api/v1/jobs/" + job_id + "/retry"
+    edit = {"final_text": "My verified edit."}
+    for response in (
+        client.patch(review_path, headers=headers, json=edit),
+        client.post("/api/v1/reviews/generate", headers=headers, json=period),
+    ):
+        assert response.status_code == 409
+        assert response.json()["error"]["code"] == "review_processing"
+
+    assert client.put("/api/v1/auth/ai-consent", headers=headers, json={"enabled": False}).status_code == 200
+    assert client.put("/api/v1/auth/ai-consent", headers=headers, json=consent).status_code == 200
+    assert client.post(retry_path, headers=headers).status_code == 200
+    assert client.get(review_path, headers=headers).json()["status"] == "processing"
+
+    def provider_unavailable(*_args):
+        raise httpx.ConnectError("Synthetic provider failure")
+
+    monkeypatch.setattr(reviews, "_call_openai", provider_unavailable)
+    assert run_background_job_once(state.session_factory, state.object_store, state.settings)
+    assert client.get(review_path, headers=headers).json()["status"] == "draft"
+    saved = client.patch(review_path, headers=headers, json=edit)
+    assert saved.status_code == 200
+    assert saved.json()["status"] == "confirmed"
+    assert saved.json()["final_text"] == edit["final_text"]
+
+
 def test_model_suggestion_can_be_saved_as_source_linked_reminder(client, monkeypatch) -> None:
     import personal_ai_life_os.api.routes.reviews as review_routes
 
