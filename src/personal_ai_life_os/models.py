@@ -220,6 +220,32 @@ class Review(Base):
     )
 
 
+class ReviewSchedule(Base):
+    __tablename__ = "review_schedules"
+    __table_args__ = (
+        UniqueConstraint("owner_id", name="uq_review_schedule_owner"),
+        Index("ix_review_schedules_due", "enabled", "next_run_at"),
+    )
+
+    id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=new_id)
+    owner_id: Mapped[str] = mapped_column(
+        Uuid(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE")
+    )
+    enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    weekday: Mapped[int] = mapped_column(Integer, default=6)
+    local_hour: Mapped[int] = mapped_column(Integer, default=18)
+    local_minute: Mapped[int] = mapped_column(Integer, default=0)
+    timezone: Mapped[str] = mapped_column(String(64), default="UTC")
+    use_external_model: Mapped[bool] = mapped_column(Boolean, default=False)
+    last_run_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
+    next_run_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
+    last_review_id: Mapped[str | None] = mapped_column(
+        Uuid(as_uuid=False), ForeignKey("reviews.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow, onupdate=utcnow)
+
+
 class ModelRun(Base):
     __tablename__ = "model_runs"
     __table_args__ = (Index("ix_model_runs_owner_created", "owner_id", "created_at"),)

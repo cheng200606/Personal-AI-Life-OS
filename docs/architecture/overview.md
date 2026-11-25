@@ -22,6 +22,10 @@ Selected local files
             └─ optional consent-gated model calls from the worker
 ```
 
+## Planned Windows desktop topology
+
+A Windows desktop distribution is planned but not implemented. It uses a Tauri 2 shell to host the same React UI in WebView2 and to supervise a packaged Python sidecar containing the FastAPI app, the database-backed worker, SQLite and local object storage, Alembic migrations, and Tesseract. The shell owns file and folder selection, notifications, tray, autostart, single-instance behavior, and signed updates. It does not require Docker, and the local API binds to a random loopback port. See [Windows desktop architecture](desktop.md) and [ADR 0002](decisions/0002-windows-desktop-shell.md).
+
 ## Stack
 
 - **API:** Python 3.11+, FastAPI, Pydantic, SQLAlchemy, Alembic.

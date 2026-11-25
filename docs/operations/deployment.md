@@ -24,6 +24,27 @@ docker run --rm -v lifeos-iteration_lifeos_data:/data -v "${PWD}:/backup" alpine
 
 Restoring replaces the live database and object volume, so stop the stack first, then copy the files in and run `pg_restore` with `--no-owner` into a freshly created database, extract `lifeos-objects.tgz` into the volume, and start the stack again. Rehearse a restore into a scratch database (`createdb lifeos_restore_check`) before relying on the procedure. Do not run the Compose stack on top of the Codespaces overlay (`.codespaces.yml`) for personal use: that overlay forces `MODEL_PROVIDER=none` so synthetic acceptance never bills a provider.
 
+### Scheduled folder sync
+
+The CLI already reuses the source identity and SHA-256 deduplication, so repeated runs are idempotent. To run a daily folder sync without opening the UI:
+
+```powershell
+# Preview the registration without creating a task.
+.\scripts\register-scheduled-sync.ps1 -Path C:\Notes -Time 09:00 -WhatIf
+
+# Register for the current Windows account. Windows may prompt for elevation.
+.\scripts\register-scheduled-sync.ps1 -Path C:\Notes -Time 09:00
+
+# Remove the task.
+.\scripts\register-scheduled-sync.ps1 -Remove
+```
+
+The task runs `uv run --project <repo> lifeos sync <path> --yes`, appends output to `data/logs/scheduled-sync.log`, and keeps the API URL from `LIFEOS_API_URL` (default `http://127.0.0.1:8000`). It reads only the selected folder and supported files. The API must be running, and the project checkout with `uv` must remain available; this is an operating-system task, not a hosted service.
+
+### Scheduled weekly review
+
+Set the weekday and local time in the Weekly review page. Scheduled generation runs inside the API worker, so `PROCESSING_MODE=worker` is required; the bare-API development default (`inline`) saves the schedule but does not generate reviews. The Compose development and production stacks use worker mode. Scheduled reviews use only active sources, skip periods with no items, and use the cited template when external consent, provider, or budget is unavailable. Due and overdue reminders are highlighted in the sidebar and in a "Due now" panel.
+
 ## Synthetic acceptance in Codespaces
 
 The [Dev Container configuration](../../.devcontainer/devcontainer.json) starts the development Compose stack as `lifeos-iteration`. Keep port 5173 private in the Ports panel. The Web client sends API requests through the same forwarded origin. API and PostgreSQL ports stay available to the Codespace terminal on loopback. [GitHub port forwarding](https://docs.github.com/en/codespaces/developing-in-a-codespace/forwarding-ports-in-your-codespace)

@@ -2,6 +2,7 @@
 
 from datetime import date, datetime
 from typing import Any, Literal
+from zoneinfo import ZoneInfo
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -252,6 +253,36 @@ class ReminderResponse(BaseModel):
     status: str
     created_at: datetime
     updated_at: datetime
+
+
+class ReviewScheduleUpdateRequest(BaseModel):
+    enabled: bool
+    weekday: int = Field(ge=0, le=6)
+    local_hour: int = Field(ge=0, le=23)
+    local_minute: int = Field(ge=0, le=59)
+    timezone: str = Field(min_length=1, max_length=64)
+    use_external_model: bool = False
+
+    @field_validator("timezone")
+    @classmethod
+    def validate_timezone(cls, value: str) -> str:
+        try:
+            ZoneInfo(value)
+        except Exception as error:
+            raise ValueError("Enter a valid IANA timezone.") from error
+        return value
+
+
+class ReviewScheduleResponse(BaseModel):
+    enabled: bool
+    weekday: int
+    local_hour: int
+    local_minute: int
+    timezone: str
+    use_external_model: bool
+    last_run_at: datetime | None
+    next_run_at: datetime | None
+    last_review_id: str | None
 
 
 class SearchTimelineResult(BaseModel):

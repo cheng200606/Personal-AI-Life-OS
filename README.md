@@ -12,11 +12,12 @@ An Apache-2.0 open source project for importing selected chat exports, photos, a
 - Import up to ten user-selected JPEG, PNG, or WebP photos, including from a selected folder. The server re-encodes images to strip metadata and runs OCR inline or as a recoverable job, depending on configuration. Optional external reviews and photo descriptions require consent and use jobs in worker mode.
 - Browse and search an owner-scoped timeline with date and source filters, inspect the original source, and export stable Markdown files with conflict handling.
 - Search timeline items, weekly reviews, and reminders together on one page, with grouped results, per-group totals, snippets, and links back to each record.
-- Generate an editable weekly review with source citations, save reminders, and export reviews as Markdown. Template reviews continue to work if external AI is unavailable.
+- Generate an editable weekly review with source citations, save reminders, and export reviews as Markdown. Template reviews continue to work if external AI is unavailable. Save a weekly day/time to generate drafts automatically in worker mode, and see due or overdue reminders in the sidebar and "Due now" panel.
+- Run a daily folder sync through the CLI with the Windows Task Scheduler helper; repeated runs reuse the source and SHA-256 deduplication.
 - Pause, resume, or revoke a source; download an account archive; delete a source or account.
 - Run with SQLite and local object storage for development, PostgreSQL in Compose, or a private S3-compatible store in a production deployment.
 
-The current search uses bounded, case-insensitive SQL `LIKE` substring matching across timeline items, weekly reviews, and reminders; there is no full-text or semantic index. Vector search, broad connectors, scheduled sync, automatic review delivery, and mobile capture are outside this MVP.
+The current search uses bounded, case-insensitive SQL `LIKE` substring matching across timeline items, weekly reviews, and reminders; there is no full-text or semantic index. Scheduled folder sync and scheduled weekly review drafts are available. Full-text/vector search, broad connectors, email or push delivery, and mobile capture remain outside this MVP.
 
 ## Local development
 
@@ -86,7 +87,7 @@ The benchmark uses only generated data on local SQLite; it is not evidence of ho
 
 ## 中文简介
 
-Personal AI Life OS 是一个 Apache-2.0 开源的个人工作与学习记忆系统。用户明确选择资料后，可以导入 ChatGPT 导出、照片和 agent 的 `memory.md`，查看可追溯的时间线，生成可编辑周复盘与提醒，并导出 Obsidian Markdown。
+Personal AI Life OS 是一个 Apache-2.0 开源的个人工作与学习记忆系统。用户明确选择资料后，可以导入 ChatGPT 导出、照片和 agent 的 `memory.md`，查看可追溯的时间线，生成可编辑周复盘与提醒，并导出 Obsidian Markdown。可设置每周复盘计划并在应用内查看到期/逾期提醒，也可用 Windows 计划任务运行可重复的文件夹同步。
 
 MVP 的本地开发主流程已实现，但尚未部署到托管环境，也未通过真实用户私测准入。不要把真实个人资料放入未验证的共享部署；上线前请完成[发布清单](docs/operations/release-checklist.md)。
 

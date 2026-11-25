@@ -17,7 +17,7 @@
 | 已完成（合成验收） | M2b 照片与队列 | 浏览器选照片或目录、服务端重编码去元数据、OCR 和同意后描述、可租约领取任务已有实现。A2 在 PostgreSQL 上覆盖租约过期、竞争者拒领与领取进程退出后的接管；A3 在目标镜像实测中英文 OCR、目录上限与逐项失败、GPS 移除。照片仍只有 Web 入口，CLI 覆盖文本。托管隐私与删除归入 B1。 [支持矩阵](../operations/support-matrix.md) · [任务服务](../../src/personal_ai_life_os/services/jobs.py) |
 | 已完成（合成验收与本人确认） | M4 数据控制及运行准备 | 暂停、恢复、撤权、来源/账号删除、归档、指标与备份脚本已有。单条删除会删除共享原件及其条目，测试与界面文案均明确这一语义，维护者已确认提示符合预期。独立删除台账已实现并纳入联合恢复预演，主桶与数据库同时丢失的场景有合成回归；托管保留窗口与真实对象版本策略归入 B1、B2。 [账号测试](../../tests/test_reviews_account.py) · [灾备边界](../operations/backup-restore.md) |
 | 不适用（单人本地范围） | 托管准入与研究 | 按 2026-11-25 范围调整，不再追求多用户托管准入与首批用户研究。相关的本机备份/恢复与删除验证已在 B2、M4 覆盖。若恢复对外开放，再启用发布清单中的托管门禁。 [发布清单](../operations/release-checklist.md) |
-| 部分完成 | PRD P1 | 已交付跨时间线、周复盘与提醒的统一检索（Search 页与 `GET /api/v1/search`，分组与每组总数、标题优先、200 字符片段、默认 10/最多 20）。其余 P1 项留待后续验证后排序：定时同步/复盘、额外连接器、可配置多提供方和移动捕获。 [PRD](../product/prd.md) · [检索评测](../../scripts/evaluate_search.py) |
+| 部分完成 | PRD P1 | 已交付跨时间线、周复盘与提醒的统一检索（Search 页与 `GET /api/v1/search`，分组与每组总数、标题优先、200 字符片段、默认 10/最多 20）；已交付按周计划生成复盘、应用内到期提醒与 CLI 计划同步。其余 P1 项留待后续验证后排序：额外连接器、可配置多提供方和移动捕获。 [PRD](../product/prd.md) · [检索评测](../../scripts/evaluate_search.py) |
 
 按单人本地范围，托管资源、域名、托管告警与参与者安排不再是当前依赖；提供方条款与价格已按 MiniMax 实际配置记录。若未来恢复对外开放，再按 B1、B3 与 C1 的目标环境验收。当前继续使用合成资料。
 
@@ -92,6 +92,8 @@
 - 2026-11-25 M5 统一检索本地验收：`uv run ruff check .` 通过；`uv run pytest -q` 61 项通过，保留 1 条测试客户端上游弃用提示；`uv run python scripts/evaluate_reviews.py` 的 30 例模板评估中来源定位率与证据支持率均为 1.0，无无据事实。
 - 2026-11-25 检索评测 `uv run python scripts/evaluate_search.py`：22 条中英文查询，数据为 10,000 条时间线、6 条复盘和 8 条提醒；SQLite 上时间线、复盘、提醒的 hit@5 均为 1.0，查询 P95 约为 59–63 毫秒，低于 500 毫秒目标，脚本判定通过。PostgreSQL 未测量，本机 Docker 不可用；结果全部来自合成 SQLite 数据。
 - 2026-11-25 `web/` 下 `npm run lint`（0 警告、0 错误）、`npm run build` 与 `npm run test:e2e`（2 项通过，8.8 秒）通过。首个浏览器用例新增键盘进入搜索、复盘/提醒/时间线三组结果、时间线/复盘/提醒跳转、无结果以及模拟 500 失败后保留查询词的断言。`git diff --check` 通过。
+- 2026-11-25 M6 自动复盘与提醒闭环：新增 `review_schedules` 迁移与 `GET/PUT /review-schedule`；worker 调度按本地周原子领取、幂等生成，活跃来源为空或撤权/暂停时跳过，外部模型在未同意或预算不足时回退模板；Web 增加计划设置、到期徽标、Due now 与复盘就绪；新增 Windows 计划同步注册脚本。
+- 2026-11-25 M6 验收：Ruff、68 项 Python 测试（含 7 项计划回归）通过；Alembic 新迁移在空 SQLite 上升级到 `b7d4f6a1c902`；Web lint 0 警告、生产构建与 2 项 Playwright（9.1 秒）通过；注册脚本 `-WhatIf` 通过。
 
 ## 6. M5 统一检索（已完成）
 
@@ -100,3 +102,11 @@
 - **证据。** `uv run pytest -q` 61 项通过，含检索回归；`web/` 下 lint、生产构建与 2 项 Playwright 用例通过，浏览器用例覆盖键盘进入、三组结果、时间线/复盘/提醒跳转、无结果和模拟 500 失败态。
 - **评测。** `uv run python scripts/evaluate_search.py` 用 22 条中英文查询对 10,000 条合成时间线加 6 条复盘和 8 条提醒测量，SQLite 上 hit@5 三组均为 1.0，查询 P95 约为 59–63 毫秒，低于 500 毫秒目标。
 - **边界。** 未测量 PostgreSQL，因为本机 Docker 不可用；以上结果均为合成 SQLite 数据，不代表托管或真实资料性能。本轮未引入全文/向量索引、保存的检索或跨组相关性排序，这些保留到后续迭代。
+
+## 7. M6 自动复盘与提醒闭环（已完成）
+
+- **范围。** 新增 `ReviewSchedule`、`GET/PUT /api/v1/review-schedule` 与 worker 调度器。按用户时区的星期与当地时间计算下次运行；同一本地周只生成一条复盘；仅使用 `active` 来源；无条目、撤权或暂停时跳过；外部模型在未同意、提供方未配置或预算不足时回退模板。
+- **界面。** Weekly review 页新增计划设置（启用、星期、时间、外部模型开关）；侧边栏显示到期/逾期提醒徽标；新增 Due now 面板与 "A scheduled weekly review is ready" 提示。
+- **计划同步。** `scripts/register-scheduled-sync.ps1` 复用现有 `lifeos sync <folder> --yes`，注册每日 Windows 任务，日志写入 `data/logs/scheduled-sync.log`；重复运行按来源身份与 SHA-256 去重。
+- **证据。** Ruff 与 68 项 Python 测试通过，其中 7 项覆盖计划默认值、校验、所有者隔离、周区间幂等、已有周期复用、停用/暂停、同意回退、预算回退与 worker 入队；Alembic 在空 SQLite 上升级到 `b7d4f6a1c902`；Web lint、生产构建与 2 项 Playwright 通过；注册脚本 `-WhatIf` 通过。
+- **边界。** 定时复盘需要 `PROCESSING_MODE=worker`；通知仅应用内，不含邮件/推送；计划同步依赖 API 常驻与操作系统任务；未做服务端文件监听。

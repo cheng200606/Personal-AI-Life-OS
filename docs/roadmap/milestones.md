@@ -49,6 +49,15 @@ This status reflects repository implementation and local checks. It does not mea
 - `scripts/evaluate_search.py` runs 22 bilingual queries against 10,000 synthetic timeline rows plus reviews and reminders. On local SQLite, hit@5 is 1.0 in every group and query P95 is about 59–63 ms against a 500 ms target.
 - **Boundaries:** PostgreSQL was not measured because Docker is unavailable, and the measurements use synthetic data. Full-text and vector search, saved searches, and cross-group relevance ranking remain post-MVP.
 
+## M6 — Automated review and reminder loop: implemented
+
+- `ReviewSchedule` stores the owner's weekday, local time, timezone, enabled state, external-model preference, last run, next run, and last generated review. `GET/PUT /api/v1/review-schedule` validates and persists it.
+- The worker scheduler atomically claims due schedules and generates at most one draft per local weekly period. It uses only active sources, skips periods with no items, honors deletion/pause, and falls back to the cited template when provider consent, consent version, or per-call budget is unavailable. In worker mode, external drafts are queued through the existing `weekly_review` job.
+- The web client adds a weekly schedule panel, a sidebar badge for due/overdue reminders, a "Due now" panel, and a scheduled-review-ready notice.
+- `scripts/register-scheduled-sync.ps1` registers the existing idempotent `lifeos sync <folder> --yes` command as a daily Windows Task Scheduler task with a log file.
+- Tests cover defaults, validation, owner isolation, local-period idempotency, existing-period reuse, disabled/paused sources, consent fallback, budget fallback, and worker-job enqueue. Full Python suite: 68 passed; browser suite: 2 passed.
+- **Boundaries:** scheduled review generation requires `PROCESSING_MODE=worker`; notifications are in-app only; scheduled sync depends on the API running and the OS task; there is no email/push or server-side filesystem watcher.
+
 ## Release and follow-up
 
-Use the [release checklist](../operations/release-checklist.md) and [support matrix](../operations/support-matrix.md) to review evidence and limits. Invite users only after hosted acceptance checks and recovery exercises have actually passed. Scheduled imports/reviews, more connectors, full-text/vector search, and mobile capture remain post-MVP.
+Use the [release checklist](../operations/release-checklist.md) and [support matrix](../operations/support-matrix.md) to review evidence and limits. Invite users only after hosted acceptance checks and recovery exercises have actually passed. Additional connectors, full-text/vector search, email or push delivery, and mobile capture remain post-MVP.

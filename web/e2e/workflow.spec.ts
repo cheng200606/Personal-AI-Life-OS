@@ -57,6 +57,23 @@ test('selects, traces, reviews, exports and revokes synthetic content', async ({
   await page.getByRole('button', { name: 'Dismiss' }).click()
   await expect(page.getByText(/· cancelled/)).toBeVisible()
 
+  await page.getByPlaceholder('What should you follow up on?').fill('Overdue synthetic follow-up')
+  await page.getByLabel('Reminder due date').fill('2020-01-01T10:00')
+  await page.getByRole('button', { name: 'Add reminder' }).click()
+  await expect(page.locator('.nav-badge')).toHaveText('1')
+  const duePanel = page.locator('.due-reminders')
+  await expect(duePanel.getByText('Overdue synthetic follow-up')).toBeVisible()
+  await duePanel.getByRole('button', { name: 'Complete' }).click()
+  await expect(page.locator('.nav-badge')).toHaveCount(0)
+
+  const schedulePanel = page.locator('.schedule-panel')
+  await schedulePanel.getByRole('checkbox', { name: 'Enable automatic weekly review' }).check()
+  await schedulePanel.getByLabel('Day').selectOption('6')
+  await schedulePanel.getByLabel('Time').fill('20:00')
+  await schedulePanel.getByRole('button', { name: 'Save schedule' }).click()
+  await expect(page.getByText('Weekly review schedule saved.')).toBeVisible()
+  await expect(schedulePanel.getByText(/^Next /)).toBeVisible()
+
   const nav = page.getByRole('navigation', { name: 'Main navigation' })
   const searchNav = nav.getByRole('button', { name: /Search/ })
   const searchInput = page.getByLabel('Search timeline, reviews, and reminders')

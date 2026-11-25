@@ -9,6 +9,8 @@ type ReviewSuggestion = { text: string; source_ids: string[]; status?: 'pending'
 type ReviewModel = { job_id?: string; provider?: string; status?: string; model?: string | null; latency_ms?: number; estimated_cost_usd?: string }
 type Review = { id: string; period_start: string; period_end: string; status: string; final_text: string | null; draft: { suggestions?: ReviewSuggestion[]; model?: ReviewModel }; source_items: Item[] }
 type Reminder = { id: string; title: string; notes: string | null; due_at: string | null; status: string }
+type ReviewSchedule = { enabled: boolean; weekday: number; local_hour: number; local_minute: number; timezone: string; use_external_model: boolean; last_run_at: string | null; next_run_at: string | null; last_review_id: string | null }
+type SchedulePayload = { enabled: boolean; weekday: number; local_hour: number; local_minute: number; timezone: string; use_external_model: boolean }
 type User = { id: string; email: string; timezone: string; ai_consent_at: string | null }
 type Conversation = { id: string; title: string; created_at: number | null }
 type Page = 'timeline' | 'reviews' | 'search' | 'account'
@@ -88,6 +90,8 @@ function App() {
   const [timelineCursor, setTimelineCursor] = useState<string | null>(null)
   const [reviews, setReviews] = useState<Review[]>([])
   const [reminders, setReminders] = useState<Reminder[]>([])
+  const [schedule, setSchedule] = useState<ReviewSchedule | null>(null)
+  const [now, setNow] = useState(() => Date.now())
   const [query, setQuery] = useState('')
   const [dateStart, setDateStart] = useState('')
   const [dateEnd, setDateEnd] = useState('')
@@ -120,12 +124,13 @@ function App() {
       if (dateStart) params.set('start', dateStart)
       if (dateEnd) params.set('end', dateEnd)
       if (sourceFilter) params.set('source_id', sourceFilter)
-      const [me, sourceList, timeline, reviewList, reminderList, modelDisclosure] = await Promise.all([
+      const [me, sourceList, timeline, reviewList, reminderList, modelDisclosure, reviewSchedule] = await Promise.all([
         api<User>('/auth/me', token), api<Source[]>('/sources', token), api<{ items: Item[]; total: number; next_cursor: string | null }>('/timeline?' + params.toString(), token),
         api<Review[]>('/reviews', token), api<Reminder[]>('/reminders', token), fetch(API + '/auth/model-disclosure').then((response) => response.json() as Promise<Disclosure>),
+        api<ReviewSchedule>('/review-schedule', token),
       ])
       if (activeToken.current !== token) return
-      setUser(me); setSources(sourceList); setItems(timeline.items); setTimelineTotal(timeline.total); setTimelineCursor(timeline.next_cursor); setReviews(reviewList); setReminders(reminderList); setDisclosure(modelDisclosure)
+      setUser(me); setSources(sourceList); setItems(timeline.items); setTimelineTotal(timeline.total); setTimelineCursor(timeline.next_cursor); setReviews(reviewList); setReminders(reminderList); setDisclosure(modelDisclosure); setSchedule(reviewSchedule)
     } catch (e) { if (activeToken.current === token) setError(e instanceof Error ? e.message : 'Could not load your workspace.') }
   }, [dateEnd, dateStart, query, sourceFilter, token])
 
@@ -133,6 +138,16 @@ function App() {
   // eslint-disable-next-line react/set-state-in-effect
   useEffect(() => { void refresh() }, [refresh])
   useEffect(() => { activeToken.current = token }, [token])
+  useEffect(() => { const timer = window.setInterval(() => setNow(Date.now()), 60000); return () => window.clearInterval(timer) }, [])
+  useEffect(() => {
+    if (!token || page !== 'reviews') return
+    const load = () => Promise.all([
+      api<Review[]>('/reviews', token), api<Reminder[]>('/reminders', token), api<ReviewSchedule>('/review-schedule', token),
+    ]).then(([nextReviews, nextReminders, nextSchedule]) => { setReviews(nextReviews); setReminders(nextReminders); setSchedule(nextSchedule) }).catch(() => undefined)
+    void load()
+    const timer = window.setInterval(() => { void load() }, 60000)
+    return () => window.clearInterval(timer)
+  }, [page, token])
   useEffect(() => () => { if (photoPreview) URL.revokeObjectURL(photoPreview) }, [photoPreview])
   useEffect(() => { directoryInput.current?.setAttribute('webkitdirectory', '') }, [token])
   useEffect(() => {
@@ -364,6 +379,14 @@ function App() {
     catch (e) { setError(e instanceof Error ? e.message : 'Could not update this suggestion.') }
   }
 
+  async function saveSchedule(payload: SchedulePayload) {
+    try {
+      const saved = await api<ReviewSchedule>('/review-schedule', token, { method: 'PUT', body: JSON.stringify(payload) })
+      setSchedule(saved)
+      setNotice(saved.enabled ? 'Weekly review schedule saved.' : 'Weekly review schedule turned off.')
+    } catch (e) { setError(e instanceof Error ? e.message : 'Could not save the weekly review schedule.') }
+  }
+
   async function updateReminder(reminder: Reminder, status: string) {
     try { await api('/reminders/' + reminder.id + '/status', token, { method: 'PATCH', body: JSON.stringify({ status }) }); await refresh() }
     catch (e) { setError(e instanceof Error ? e.message : 'Could not update reminder.') }
@@ -450,8 +473,10 @@ function App() {
   if (!token) return <main className="auth-shell"><section className="auth-card"><div className="brand-mark">L</div><p className="eyebrow">PERSONAL AI LIFE OS</p><h1>Your life, with context.</h1><p className="muted">Choose what to remember. Review it with sources. Keep your notes portable.</p><form onSubmit={authenticate} className="stack"><label>Email<input name="email" type="email" required autoComplete="email" /></label><label>Password<input name="password" type="password" minLength={12} required autoComplete={loginMode === 'login' ? 'current-password' : 'new-password'} /></label>{loginMode === 'register' && <label>Invitation code <span className="muted">(if required)</span><input name="invite_code" /></label>}<button className="primary" disabled={busy}>{busy ? 'Please wait…' : loginMode === 'login' ? 'Sign in' : 'Create account'}</button></form><button className="text-button" onClick={() => setLoginMode(loginMode === 'login' ? 'register' : 'login')}>{loginMode === 'login' ? 'Create an account' : 'Back to sign in'}</button>{error && <p className="notice error">{error}</p>}</section></main>
 
   const searchTotal = searchResults ? searchResults.timeline.total + searchResults.reviews.total + searchResults.reminders.total : 0
+  const dueReminders = reminders.filter((reminder) => ['pending', 'snoozed'].includes(reminder.status) && reminder.due_at && new Date(reminder.due_at).getTime() <= now)
+  const readyReview = schedule?.last_review_id ? reviews.find((review) => review.id === schedule.last_review_id && review.status === 'draft') : undefined
 
-  return <div className="app-shell"><aside className="sidebar"><div className="brand"><span className="brand-mark small">L</span><span>Life OS</span></div><nav aria-label="Main navigation"><button className={page === 'timeline' ? 'nav-link active' : 'nav-link'} onClick={() => setPage('timeline')}>◷ <span>Timeline</span></button><button className={page === 'search' ? 'nav-link active' : 'nav-link'} onClick={() => setPage('search')}>⌕ <span>Search</span></button><button className={page === 'reviews' ? 'nav-link active' : 'nav-link'} onClick={() => setPage('reviews')}>✳ <span>Weekly review</span></button><button className={page === 'account' ? 'nav-link active' : 'nav-link'} onClick={() => setPage('account')}>⚙ <span>Account & sources</span></button></nav><div className="sidebar-foot"><span className="avatar">{user?.email.slice(0, 1).toUpperCase()}</span><span className="user-email">{user?.email}</span><button className="icon-button" title="Sign out" onClick={() => { sessionStorage.removeItem('lifeos-token'); activeToken.current = ''; setToken(''); setUser(null) }}>↗</button></div></aside>
+  return <div className="app-shell"><aside className="sidebar"><div className="brand"><span className="brand-mark small">L</span><span>Life OS</span></div><nav aria-label="Main navigation"><button className={page === 'timeline' ? 'nav-link active' : 'nav-link'} onClick={() => setPage('timeline')}>◷ <span>Timeline</span></button><button className={page === 'search' ? 'nav-link active' : 'nav-link'} onClick={() => setPage('search')}>⌕ <span>Search</span></button><button className={page === 'reviews' ? 'nav-link active' : 'nav-link'} onClick={() => setPage('reviews')}>✳ <span>Weekly review</span>{dueReminders.length > 0 && <span className="nav-badge">{dueReminders.length}</span>}</button><button className={page === 'account' ? 'nav-link active' : 'nav-link'} onClick={() => setPage('account')}>⚙ <span>Account & sources</span></button></nav><div className="sidebar-foot"><span className="avatar">{user?.email.slice(0, 1).toUpperCase()}</span><span className="user-email">{user?.email}</span><button className="icon-button" title="Sign out" onClick={() => { sessionStorage.removeItem('lifeos-token'); activeToken.current = ''; setToken(''); setUser(null) }}>↗</button></div></aside>
     <main className="main"><header className="topbar"><div><p className="eyebrow">YOUR PERSONAL KNOWLEDGE SPACE</p><h1>{page === 'timeline' ? 'Timeline' : page === 'search' ? 'Search' : page === 'reviews' ? 'Weekly review' : 'Account & sources'}</h1></div><span className="privacy-pill"><span className="live-dot" /> Private workspace</span></header>
       {error && <div className="notice error" role="alert">{error}<button className="icon-button" onClick={() => setError('')}>×</button></div>}
       {notice && <div className="notice success" role="status">{notice}<button className="icon-button" onClick={() => setNotice('')}>×</button></div>}
@@ -482,9 +507,49 @@ function App() {
           </section>}
         </div>}
       </section>}
+      {page === 'reviews' && schedule && <ReviewSchedulePanel schedule={schedule} timezone={user?.timezone || 'UTC'} consentEnabled={Boolean(user?.ai_consent_at)} onSave={saveSchedule} readyReview={readyReview} onOpenReview={(review) => document.getElementById('review-' + review.id)?.scrollIntoView({ behavior: 'smooth', block: 'center' })} />}
+      {page === 'reviews' && dueReminders.length > 0 && <DueRemindersPanel reminders={dueReminders} onAction={updateReminder} />}
       {page === 'reviews' && <section className="review-grid"><div className="panel"><div className="panel-heading"><div><p className="eyebrow">A MOMENT TO REFLECT</p><h2>Start a weekly review</h2></div></div><p className="muted">Build an editable draft from this period’s timeline. Every generated fact links back to its source.</p><form className="review-form" onSubmit={generateReview}><label>From<input name="start" type="date" required /></label><label>Until <small>(exclusive)</small><input name="end" type="date" required /></label><label className="check-row"><input type="checkbox" checked={externalModel} disabled={!disclosure?.available || !user?.ai_consent_at} onChange={(event) => setExternalModel(event.target.checked)} /><span>Use external AI model<br /><small>Enable current provider consent in Account first.</small></span></label><button className="primary" disabled={busy}>{busy ? 'Preparing…' : 'Generate draft'}</button></form><div className="subsection"><div className="panel-heading"><h2>Reminders</h2></div><form className="reminder-form" onSubmit={createReminder}><input name="title" placeholder="What should you follow up on?" required /><input name="due_at" type="datetime-local" aria-label="Reminder due date" /><button className="secondary">Add reminder</button></form>{reminders.map((reminder) => <div className="reminder-row" id={'reminder-' + reminder.id} key={reminder.id}><div><strong>{reminder.title}</strong><small>{reminder.due_at ? new Date(reminder.due_at).toLocaleString() : 'No due date'} · {reminder.status}</small></div>{reminder.status !== 'completed' && reminder.status !== 'cancelled' && <><button className="text-button" onClick={() => void updateReminder(reminder, 'completed')}>Complete</button><button className="text-button" onClick={() => void updateReminder(reminder, 'snoozed')}>Snooze</button><button className="text-button" onClick={() => void updateReminder(reminder, 'cancelled')}>Dismiss</button></>}</div>)}</div></div><div className="review-list">{reviews.map((review) => <ReviewCard key={review.id + (review.final_text || "")} review={review} onSave={saveReview} onOpenSource={openSource} onExport={downloadReview} onCreateReminder={createReminderFromSuggestion} onUpdateSuggestion={updateSuggestion} />)}{reviews.length === 0 && <div className="panel empty-state"><span>✳</span><strong>Your reviews will appear here</strong><p>Choose a date range to make a draft from sourced timeline items.</p></div>}</div></section>}
       {page === 'account' && <section className="account-grid"><div className="panel"><p className="eyebrow">PROFILE</p><h2>{user?.email}</h2><p className="muted">Timezone: {user?.timezone}</p><div className="subsection"><p className="eyebrow">MODEL DATA CONSENT</p>{disclosure?.available ? <><p className="muted">Provider: {disclosure.provider} · Model: {disclosure.model}</p><p className="muted">Data sent: {disclosure.data_sent}</p><p className="muted">Retention: {disclosure.retention}</p><p className="muted">Configured estimate: ${disclosure.input_cost_per_million_usd} per million input tokens and ${disclosure.output_cost_per_million_usd} per million output tokens. Per-call budget check: ${disclosure.max_cost_per_call_usd}. A call that fails or exceeds the estimate may still incur provider charges.</p>{disclosure.privacy_url && <p><a href={disclosure.privacy_url} target="_blank" rel="noreferrer">Provider privacy terms ↗</a></p>}<label className="check-row consent-check"><input type="checkbox" checked={consentAcknowledged} onChange={(event) => setConsentAcknowledged(event.target.checked)} /><span>I have reviewed the provider and data handling disclosure above.</span></label><p className="small-note">Current consent: {user?.ai_consent_at ? 'Enabled' : 'Off'}</p><div className="button-row"><button className="primary" disabled={!consentAcknowledged || Boolean(user?.ai_consent_at)} onClick={() => void setModelConsent(true)}>Enable external AI</button><button className="secondary" disabled={!user?.ai_consent_at} onClick={() => void setModelConsent(false)}>Turn off</button></div></> : <p className="muted">No external model is configured. Template-based reviews remain available, and no review data is sent to a model provider.</p>}</div><div className="subsection"><p className="eyebrow">YOUR DATA</p><p className="muted">Download a portable archive or permanently delete your account and stored records.</p><div className="button-row"><button className="secondary" onClick={() => void downloadAccountArchive()}>Download archive</button><button className="danger" onClick={() => void deleteAccount()}>Delete account</button></div></div></div><div className="panel"><div className="panel-heading"><div><p className="eyebrow">YOUR SELECTIONS</p><h2>Manage sources</h2></div></div>{sources.map((source) => <div className="manage-source" key={source.id}><div><strong>{source.name}</strong><small>{source.kind.replace('_', ' ')} · {source.status}</small><p className="source-scope">{sourceScopeDescription(source)}</p><small>Last import: {source.last_sync_at ? new Date(source.last_sync_at).toLocaleString() : 'Never'}</small></div><div className="button-row">{source.status === 'active' && <button className="text-button" onClick={() => void sourceAction(source, 'pause')}>Pause</button>}{source.status === 'paused' && <button className="text-button" onClick={() => void sourceAction(source, 'resume')}>Resume</button>}{source.status !== 'revoked' && <button className="text-button" onClick={() => void sourceAction(source, 'revoke')}>Revoke</button>}<button className="text-button danger-text" onClick={() => void sourceAction(source, 'delete')}>Delete data</button></div></div>)}{sources.length === 0 && <p className="muted">No sources yet.</p>}</div></section>}
     </main></div>
+}
+
+const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+const pad2 = (value: number) => String(value).padStart(2, '0')
+
+function ReviewSchedulePanel({ schedule, timezone, consentEnabled, onSave, readyReview, onOpenReview }: { schedule: ReviewSchedule; timezone: string; consentEnabled: boolean; onSave: (payload: SchedulePayload) => void; readyReview?: Review; onOpenReview: (review: Review) => void }) {
+  const [enabled, setEnabled] = useState(schedule.enabled)
+  const [weekday, setWeekday] = useState(schedule.weekday)
+  const [time, setTime] = useState(pad2(schedule.local_hour) + ':' + pad2(schedule.local_minute))
+  const [external, setExternal] = useState(schedule.use_external_model)
+
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const [hour, minute] = time.split(':').map(Number)
+    onSave({ enabled, weekday, local_hour: hour, local_minute: minute, timezone, use_external_model: external })
+  }
+
+  return <section className="panel schedule-panel">
+    <div className="panel-heading"><div><p className="eyebrow">AUTOMATIC REVIEW</p><h2>Weekly review schedule</h2></div>{schedule.next_run_at && <span className="count-pill">Next {new Date(schedule.next_run_at).toLocaleString()}</span>}</div>
+    <p className="muted">Generate a draft in your timezone while the local API worker is running. External AI still requires consent and budget.</p>
+    <form className="schedule-form" onSubmit={submit}>
+      <label className="check-row"><input type="checkbox" checked={enabled} onChange={(event) => setEnabled(event.target.checked)} /><span>Enable automatic weekly review</span></label>
+      <label>Day<select value={weekday} onChange={(event) => setWeekday(Number(event.target.value))}>{WEEKDAYS.map((label, index) => <option value={index} key={label}>{label}</option>)}</select></label>
+      <label>Time<input type="time" value={time} onChange={(event) => setTime(event.target.value)} required /></label>
+      <label className="check-row"><input type="checkbox" checked={external} onChange={(event) => setExternal(event.target.checked)} /><span>Use external AI when available</span></label>
+      <div className="button-row"><button className="secondary" type="submit">Save schedule</button></div>
+    </form>
+    {schedule.last_run_at && <p className="small-note">Last scheduled run: {new Date(schedule.last_run_at).toLocaleString()}</p>}
+    {external && !consentEnabled && <p className="small-note">External AI is off; scheduled reviews will use the template until consent is enabled.</p>}
+    {readyReview && <p className="notice success">A scheduled weekly review is ready. <button className="text-button" type="button" onClick={() => onOpenReview(readyReview)}>Open review</button></p>}
+  </section>
+}
+
+function DueRemindersPanel({ reminders, onAction }: { reminders: Reminder[]; onAction: (reminder: Reminder, status: string) => void }) {
+  return <section className="panel due-reminders">
+    <div className="panel-heading"><div><p className="eyebrow">DUE NOW</p><h2>Follow-ups need attention</h2></div><span className="count-pill">{reminders.length}</span></div>
+    {reminders.map((reminder) => <div className="reminder-row" key={reminder.id}><div><strong>{reminder.title}</strong><small>{reminder.due_at ? new Date(reminder.due_at).toLocaleString() : 'No due date'} · {reminder.status}</small></div><div className="button-row"><button className="text-button" onClick={() => onAction(reminder, 'completed')}>Complete</button><button className="text-button" onClick={() => onAction(reminder, 'snoozed')}>Snooze</button></div></div>)}
+  </section>
 }
 
 function ReviewCard({ review, onSave, onOpenSource, onExport, onCreateReminder, onUpdateSuggestion }: { review: Review; onSave: (review: Review, text: string) => void; onOpenSource: (item: Item) => void; onExport: (review: Review) => void; onCreateReminder: (suggestion: ReviewSuggestion) => void; onUpdateSuggestion: (review: Review, index: number, patch: { text?: string; status?: 'pending' | 'dismissed' }) => void }) {
