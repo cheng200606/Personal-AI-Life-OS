@@ -672,6 +672,7 @@ def _execute_weekly_review(session_factory: sessionmaker, job: JobEnvelope, conf
                 call_cost = model_cost_usd(input_tokens, output_tokens, config) or reserved_cost
                 if call_cost <= config.model_max_cost_per_call_usd:
                     draft = model_draft
+                    draft.setdefault("model", {})["status"] = "ready"
                     run_status = "succeeded"
                 else:
                     draft["model"]["status"] = "budget_fallback"

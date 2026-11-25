@@ -81,3 +81,6 @@
 - 启动回放观察：早期被中断的 5 条删除请求在进程重启时由 tombstone 回放补齐，`completed_at` 记为重启时刻，符合「清理未完成即保持待处理、启动时重放」的设计。
 - 上述云端演练使用开发数据库与 S3 兼容服务，未覆盖真实桶生命周期规则、托管告警、提供方条款与 C1 真实用户；这些仍按 B1、B3 与 C1 在目标环境验收。
 - 2026-11-25 按单人本地范围启用云端 AI：新增 `OPENAI_BASE_URL`（默认 `https://api.openai.com/v1`），三处模型调用改为读取该配置。用本机 OpenAI 兼容桩服务实测同意、生成、引用与费用记录：`/reviews/generate` 返回 201 草稿，元数据 `status=ready`、`model=gateway-model`、125 毫秒、估算成本 0.00018 美元，事实与建议均来自桩服务且引用匹配；请求路径为 `/v1/chat/completions`，令牌与模型名按配置传递。Ruff 与 52 项测试通过。
+- 2026-11-25 接入真实提供方 MiniMax（`https://api.minimax.cn/v1`、`MiniMax-M3.1-Flash`、0.15/0.60 美元每百万 token）后发现并修复 worker 模式缺陷：外部周复盘成功分支未写入 `model.status`，随后的 `draft["model"]["status"]` 触发 KeyError，任务被记为 `worker_error` 并回退模板。修复后真实调用通过：复盘草稿 `status=ready`、4614 毫秒、530/672 token、0.00048 美元、3 条事实与 3 条建议；照片描述任务 `completed`，对合成图片的描述内容准确。提供方接受 `response_format=json_object`，思考内容位于 `reasoning_content`，不污染正文。新增该成功路径的回归测试，Ruff 与 53 项测试通过。
+- 2026-11-25 浏览器端完整验收（真实提供方、合成账号）：在网页里登录、于 Account 勾选披露并启用外部 AI、在 Weekly review 选择外部模型并生成，卡片显示「AI draft · MiniMax-M3.1-Flash · 5603 ms · $0.0004521」，正文与建议均带来源引用，生成后自动刷新。为便于单人核对调用情况，复盘卡片新增一行模型、耗时与估算成本；Ruff、Web lint 与生产构建通过。
+- 2026-11-25 按单人 Compose 部署复核备份与恢复：数据库 dump 82,723 字节恢复到临时库后账号与条目数一致；对象卷归档 25,337 字节，解压到全新卷后文件数与线上同为 14。备份命令已改为容器内落盘再复制，避免 PowerShell 重定向破坏二进制。

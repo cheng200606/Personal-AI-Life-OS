@@ -9,4 +9,6 @@ services:
       - "5173:5173"
   api:
     environment:
+      # Keep synthetic acceptance free of provider charges. Run the local stack with
+      # docker-compose.yml alone (no overlay) to use the configured provider.
       MODEL_PROVIDER: none

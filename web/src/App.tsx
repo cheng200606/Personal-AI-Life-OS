@@ -6,7 +6,8 @@ type Source = { id: string; kind: string; name: string; status: string; selected
 type Item = { id: string; source_id: string; kind: string; title: string; content_text: string; occurred_at: string | null; source_locator: Record<string, unknown>; metadata: Record<string, unknown> }
 type Job = { id: string; kind: string; status: string; attempt_count: number; max_attempts: number; error_code: string | null; result_json: Record<string, unknown> | null }
 type ReviewSuggestion = { text: string; source_ids: string[] }
-type Review = { id: string; period_start: string; period_end: string; status: string; final_text: string | null; draft: { suggestions?: ReviewSuggestion[]; model?: { job_id?: string; status?: string } }; source_items: Item[] }
+type ReviewModel = { job_id?: string; provider?: string; status?: string; model?: string | null; latency_ms?: number; estimated_cost_usd?: string }
+type Review = { id: string; period_start: string; period_end: string; status: string; final_text: string | null; draft: { suggestions?: ReviewSuggestion[]; model?: ReviewModel }; source_items: Item[] }
 type Reminder = { id: string; title: string; notes: string | null; due_at: string | null; status: string }
 type User = { id: string; email: string; timezone: string; ai_consent_at: string | null }
 type Conversation = { id: string; title: string; created_at: number | null }
@@ -424,6 +425,9 @@ function ReviewCard({ review, onSave, onOpenSource, onExport, onCreateReminder }
   return <article className="panel review-card">
     <div className="panel-heading"><div><p className="eyebrow">{review.status.toUpperCase()}</p><h2>{new Date(review.period_start).toLocaleDateString()} — {new Date(review.period_end).toLocaleDateString()}</h2></div><div className="button-row"><button className="secondary" onClick={() => onExport(review)} disabled={processing || review.status === 'invalidated'}>Export Markdown</button><button className="primary" onClick={() => onSave(review, text)} disabled={processing || review.status === 'invalidated'}>Confirm & save</button></div></div>
     {processing && <p className="notice">The external model is processing. This local template will remain available if the provider fails.</p>}
+    {review.draft?.model?.provider && review.draft.model.provider !== 'template' && <p className="small-note">{review.draft.model.status === 'ready'
+      ? 'AI draft · ' + (review.draft.model.model || 'model') + ' · ' + (review.draft.model.latency_ms ?? 0) + ' ms · $' + (review.draft.model.estimated_cost_usd || '0')
+      : 'Template draft · external model ' + (review.draft.model.status || 'unavailable')}</p>}
     {review.status === 'invalidated' && <p className="notice error">A source was deleted. Regenerate this review to restore its evidence.</p>}
     {review.draft?.suggestions?.length ? <div className="review-suggestions"><p className="eyebrow">SUGGESTED ACTIONS</p>{review.draft.suggestions.map((suggestion, index) => <div className="suggestion-row" key={index}><div><strong>{suggestion.text}</strong><small>Evidence: {review.source_items.filter((item) => suggestion.source_ids.includes(item.id)).map((item) => item.title).join(', ') || 'Source details unavailable'}</small></div><button className="secondary" disabled={processing || review.status === 'invalidated'} onClick={() => onCreateReminder(suggestion)}>Create reminder</button></div>)}</div> : null}
     <textarea value={text} onChange={(event) => setText(event.target.value || '')} placeholder="Edit your review. Use the source list below to verify facts." rows={9} disabled={processing || review.status === 'invalidated'} /><details><summary>Evidence ({review.source_items.length})</summary>{review.source_items.map((item) => <p className="evidence" key={item.id}><strong>{item.title}</strong><span>{item.content_text.slice(0, 180)}</span><button className="text-button" onClick={() => onOpenSource(item)}>Open source in timeline ↗</button></p>)}</details>

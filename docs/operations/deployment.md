@@ -4,7 +4,25 @@ The production Compose file is a deployment template. It has not been applied to
 
 ## Solo local use
 
-One person, one machine, no hosted exposure. Running the API with `.env.example` defaults uses SQLite in `data/lifeos.db`, local object storage in `data/objects`, inline processing, and open registration; TLS, invitation codes, PostgreSQL, and S3 are not required. Back up and restore `data/` as a single unit, and stop the API while copying it so the database and object files stay consistent. To use a cloud model, set `MODEL_PROVIDER=openai`, `OPENAI_API_KEY`, non-zero per-million-token prices, and `OPENAI_BASE_URL` when the provider is an OpenAI-compatible gateway rather than OpenAI itself. The checklist and hosting sections below apply only if the instance is exposed to other people.
+One person, one machine, no hosted exposure. Running the API with `.env.example` defaults uses SQLite in `data/lifeos.db`, local object storage in `data/objects`, inline processing, and open registration; TLS, invitation codes, PostgreSQL, and S3 are not required. To use a cloud model, set `MODEL_PROVIDER=openai`, `OPENAI_API_KEY`, non-zero per-million-token prices, and `OPENAI_BASE_URL` when the provider is an OpenAI-compatible gateway rather than OpenAI itself. The checklist and hosting sections below apply only if the instance is exposed to other people.
+
+Back up whichever mode you run:
+
+- **Bare API process**: stop the API, then copy `data/` as one unit so the database and object files stay consistent.
+- **Compose stack** (`-p lifeos-iteration -f docker-compose.yml`): dump PostgreSQL and copy the object volume. Stop the stack or accept a short inconsistency window between the two commands.
+
+```powershell
+# Database: dump inside the container, then copy the file out (byte-safe in PowerShell).
+docker compose -p lifeos-iteration -f docker-compose.yml exec -T db `
+  sh -c "pg_dump -Fc -U lifeos lifeos > /tmp/lifeos-backup.dump"
+docker cp lifeos-iteration-db-1:/tmp/lifeos-backup.dump .\lifeos-backup.dump
+
+# Objects: archive the volume to the current directory.
+docker run --rm -v lifeos-iteration_lifeos_data:/data -v "${PWD}:/backup" alpine `
+  tar czf /backup/lifeos-objects.tgz -C /data .
+```
+
+Restoring replaces the live database and object volume, so stop the stack first, then copy the files in and run `pg_restore` with `--no-owner` into a freshly created database, extract `lifeos-objects.tgz` into the volume, and start the stack again. Rehearse a restore into a scratch database (`createdb lifeos_restore_check`) before relying on the procedure. Do not run the Compose stack on top of the Codespaces overlay (`.codespaces.yml`) for personal use: that overlay forces `MODEL_PROVIDER=none` so synthetic acceptance never bills a provider.
 
 ## Synthetic acceptance in Codespaces
 

@@ -111,6 +111,45 @@ def test_model_consent_can_be_revoked_without_reacknowledging(client) -> None:
     assert revoked.json()["ai_consent_at"] is None
 
 
+def test_worker_external_review_completes_with_ready_status(client, monkeypatch) -> None:
+    from personal_ai_life_os.api.routes import reviews
+    from personal_ai_life_os.services.jobs import run_background_job_once
+
+    token = token_for(client, "worker-ready@example.com")
+    import_memory(client, token)
+    state = client.app.state
+    state.settings.processing_mode = "worker"
+    state.settings.model_provider = "openai"
+    state.settings.openai_api_key = "synthetic-api-key"
+    configure_synthetic_model_pricing(state.settings)
+    headers = {"Authorization": "Bearer " + token}
+    consent = {"enabled": True, "disclosure_version": state.settings.model_disclosure_version}
+    assert client.put("/api/v1/auth/ai-consent", headers=headers, json=consent).status_code == 200
+    generation = client.post(
+        "/api/v1/reviews/generate",
+        headers=headers,
+        json={"period_start": "2026-11-16", "period_end": "2026-11-18", "use_external_model": True},
+    )
+    assert generation.status_code == 201, generation.text
+    review = generation.json()
+    assert review["status"] == "processing"
+
+    def ready_model(items, _config):
+        return (
+            {"facts": [{"text": "Synthetic model fact", "source_ids": [items[0].id]}], "suggestions": []},
+            12,
+            100,
+            20,
+        )
+
+    monkeypatch.setattr(reviews, "_call_openai", ready_model)
+    assert run_background_job_once(state.session_factory, state.object_store, state.settings)
+    completed = client.get("/api/v1/reviews/" + review["id"], headers=headers).json()
+    assert completed["status"] == "draft"
+    assert completed["draft"]["model"]["status"] == "ready"
+    assert completed["draft"]["facts"][0]["text"] == "Synthetic model fact"
+
+
 def test_queued_review_cannot_overwrite_a_user_confirmation(client, monkeypatch) -> None:
     import httpx
 

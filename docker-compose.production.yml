@@ -53,6 +53,7 @@ services:
       S3_DELETION_JOURNAL_ENDPOINT_URL: ${S3_DELETION_JOURNAL_ENDPOINT_URL:-}
       MODEL_PROVIDER: ${MODEL_PROVIDER:-none}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
       OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4.1-mini}
       MODEL_DISCLOSURE_VERSION: ${MODEL_DISCLOSURE_VERSION:-openai-chat-completions-v1}
       MODEL_DISCLOSURE_DATA: ${MODEL_DISCLOSURE_DATA:-Selected timeline item dates, titles, source-item IDs, and text for the requested review period.}
