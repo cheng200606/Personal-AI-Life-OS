@@ -2,6 +2,10 @@
 
 The production Compose file is a deployment template. It has not been applied to a cloud account or validated with a live domain, certificate, object bucket, or real credentials.
 
+## Solo local use
+
+One person, one machine, no hosted exposure. Running the API with `.env.example` defaults uses SQLite in `data/lifeos.db`, local object storage in `data/objects`, inline processing, and open registration; TLS, invitation codes, PostgreSQL, and S3 are not required. Back up and restore `data/` as a single unit, and stop the API while copying it so the database and object files stay consistent. To use a cloud model, set `MODEL_PROVIDER=openai`, `OPENAI_API_KEY`, non-zero per-million-token prices, and `OPENAI_BASE_URL` when the provider is an OpenAI-compatible gateway rather than OpenAI itself. The checklist and hosting sections below apply only if the instance is exposed to other people.
+
 ## Synthetic acceptance in Codespaces
 
 The [Dev Container configuration](../../.devcontainer/devcontainer.json) starts the development Compose stack as `lifeos-iteration`. Keep port 5173 private in the Ports panel. The Web client sends API requests through the same forwarded origin. API and PostgreSQL ports stay available to the Codespace terminal on loopback. [GitHub port forwarding](https://docs.github.com/en/codespaces/developing-in-a-codespace/forwarding-ports-in-your-codespace)

@@ -47,6 +47,12 @@ npm run dev
 
 Open `http://127.0.0.1:5173`. The development proxy connects to the local API.
 
+### Optional cloud AI
+
+External reviews and photo descriptions stay off by default so a local instance runs without a provider key. To enable them, set `MODEL_PROVIDER=openai`, `OPENAI_API_KEY`, and non-zero `MODEL_INPUT_COST_PER_MILLION_USD` / `MODEL_OUTPUT_COST_PER_MILLION_USD` values. Any OpenAI-compatible gateway works: point `OPENAI_BASE_URL` at its API root. The web client asks for consent before the first external call, and template reviews keep working when the provider is unavailable.
+
+Local data lives in `data/lifeos.db` and `data/objects`. Copy both together to back up or move the instance.
+
 ### PostgreSQL and web Compose stack
 
 ```powershell

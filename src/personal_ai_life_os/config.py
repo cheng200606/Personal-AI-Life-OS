@@ -49,6 +49,7 @@ class Settings(BaseSettings):
 
     model_provider: Literal["none", "openai"] = "none"
     openai_api_key: str | None = None
+    openai_base_url: str = "https://api.openai.com/v1"
     openai_model: str = "gpt-4.1-mini"
     model_disclosure_version: str = "openai-chat-completions-v1"
     model_max_output_tokens: int = 1600
@@ -62,6 +63,11 @@ class Settings(BaseSettings):
     @property
     def cors_origin_list(self) -> list[str]:
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
+
+    @property
+    def openai_chat_completions_url(self) -> str:
+        base = self.openai_base_url.strip().rstrip("/") or "https://api.openai.com/v1"
+        return base + "/chat/completions"
 
     @model_validator(mode="after")
     def validate_production_configuration(self) -> "Settings":

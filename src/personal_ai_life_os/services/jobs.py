@@ -509,7 +509,7 @@ def _execute_photo_description(
     try:
         with httpx.Client(timeout=httpx.Timeout(25.0, connect=5.0)) as client:
             response = client.post(
-                "https://api.openai.com/v1/chat/completions",
+                config.openai_chat_completions_url,
                 headers={"Authorization": "Bearer " + (config.openai_api_key or "")},
                 json={
                     "model": config.openai_model,

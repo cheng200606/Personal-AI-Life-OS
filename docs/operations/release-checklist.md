@@ -1,5 +1,7 @@
 # MVP Release Checklist
 
+This checklist gates exposing the instance to other people. A solo local instance does not need TLS, invitation codes, a hosted database, or a private bucket; keep a consistent copy of `data/` instead. See [Solo local use](deployment.md#solo-local-use).
+
 This checklist separates repository evidence from hosting and user research evidence. A box is complete only when an operator records the actual environment, date, version, and result.
 
 ## Repository evidence
