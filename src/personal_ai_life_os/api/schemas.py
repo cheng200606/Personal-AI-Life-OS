@@ -252,3 +252,52 @@ class ReminderResponse(BaseModel):
     status: str
     created_at: datetime
     updated_at: datetime
+
+
+class SearchTimelineResult(BaseModel):
+    id: str
+    source_id: str
+    source_name: str
+    title: str
+    snippet: str
+    occurred_at: datetime | None
+    kind: str
+
+
+class SearchReviewResult(BaseModel):
+    id: str
+    period_start: datetime
+    period_end: datetime
+    status: str
+    snippet: str
+    updated_at: datetime
+
+
+class SearchReminderResult(BaseModel):
+    id: str
+    title: str
+    snippet: str
+    due_at: datetime | None
+    status: str
+
+
+class SearchTimelineGroup(BaseModel):
+    total: int
+    results: list[SearchTimelineResult]
+
+
+class SearchReviewGroup(BaseModel):
+    total: int
+    results: list[SearchReviewResult]
+
+
+class SearchReminderGroup(BaseModel):
+    total: int
+    results: list[SearchReminderResult]
+
+
+class SearchResponse(BaseModel):
+    query: str
+    timeline: SearchTimelineGroup
+    reviews: SearchReviewGroup
+    reminders: SearchReminderGroup

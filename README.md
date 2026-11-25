@@ -11,11 +11,12 @@ An Apache-2.0 open source project for importing selected chat exports, photos, a
 - Select and preview Markdown or ChatGPT export files locally. Chat messages are not printed in preview; the upload contains only chosen conversations.
 - Import up to ten user-selected JPEG, PNG, or WebP photos, including from a selected folder. The server re-encodes images to strip metadata and runs OCR inline or as a recoverable job, depending on configuration. Optional external reviews and photo descriptions require consent and use jobs in worker mode.
 - Browse and search an owner-scoped timeline with date and source filters, inspect the original source, and export stable Markdown files with conflict handling.
+- Search timeline items, weekly reviews, and reminders together on one page, with grouped results, per-group totals, snippets, and links back to each record.
 - Generate an editable weekly review with source citations, save reminders, and export reviews as Markdown. Template reviews continue to work if external AI is unavailable.
 - Pause, resume, or revoke a source; download an account archive; delete a source or account.
 - Run with SQLite and local object storage for development, PostgreSQL in Compose, or a private S3-compatible store in a production deployment.
 
-The current text search uses bounded SQL `LIKE` matching. Vector search, broad connectors, scheduled sync, automatic review delivery, and mobile capture are outside this MVP.
+The current search uses bounded, case-insensitive SQL `LIKE` substring matching across timeline items, weekly reviews, and reminders; there is no full-text or semantic index. Vector search, broad connectors, scheduled sync, automatic review delivery, and mobile capture are outside this MVP.
 
 ## Local development
 
@@ -68,6 +69,7 @@ The API and web ports are bound to loopback. The API applies Alembic migrations 
 uv run ruff check .
 uv run pytest -q
 uv run python scripts/evaluate_reviews.py
+uv run python scripts/evaluate_search.py
 uv run python scripts/benchmark_mvp.py
 ```
 

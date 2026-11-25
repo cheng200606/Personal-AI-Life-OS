@@ -38,7 +38,7 @@ The MVP uses a database-backed queue with leases, bounded retries, and owner-sco
 1. **Select:** user chooses a Markdown file, ChatGPT export conversations, or up to ten photos/files from a selected folder. Chat selection and minimization happen in the browser or CLI before upload.
 2. **Authorize:** create a source record with selected scope and consent version; source access is tied to the authenticated owner.
 3. **Import:** upload through a size-limited endpoint. The API hashes the selected bytes, stores the original or sanitized photo, parses records, and records line/message/file provenance. Photo OCR is recorded as a durable job and becomes searchable when it finishes.
-4. **Review:** date/source filters and bounded keyword search show imported records. Raw file access goes through an owner-scoped API endpoint.
+4. **Review:** date/source filters and bounded keyword search show imported records. Unified search on the Search page returns grouped matches across timeline items, weekly reviews, and reminders, with links back to each record. Raw file access goes through an owner-scoped API endpoint.
 5. **Reflect:** an on-demand review uses confirmed timeline records. Template output copies source text with citations. Optional external output is validated against accessible source IDs and falls back to the template on provider failure.
 6. **Confirm and export:** the user edits and confirms review text, creates or updates reminders, and exports notes to Markdown. CLI export uses stable IDs and detects hand-edited files.
 7. **Delete:** source or account deletion records a durable tombstone before removing data. Startup replays tombstones before serving a restored database.
@@ -56,6 +56,6 @@ The MVP uses a database-backed queue with leases, bounded retries, and owner-sco
 
 ## Search and limits
 
-Timeline queries use owner, date, source, current/deleted state, and simple case-insensitive SQL `LIKE` matching. There is no full-text or semantic index. Text upload is capped at 5 MB per file and photo upload at 20 MB by default. Photo decoding is limited to 40 megapixels. A review period is limited to 500 source items.
+Search uses owner-scoped, case-insensitive SQL `LIKE` substring matching. `GET /api/v1/search` returns three groups—timeline, weekly reviews, and reminders—each with a total and at most 20 results (10 by default). Title matches sort before body matches, snippets are capped at 200 characters, and deleted/non-current timeline entries, sources pending deletion, and invalidated reviews are excluded. There is no full-text or semantic index. Text upload is capped at 5 MB per file and photo upload at 20 MB by default. Photo decoding is limited to 40 megapixels. A review period is limited to 500 source items.
 
 See the [support matrix](../operations/support-matrix.md), [privacy design and current limits](privacy.md), and [deployment guide](../operations/deployment.md).

@@ -42,6 +42,13 @@ This status reflects repository implementation and local checks. It does not mea
 - Synthetic tests cover EXIF/GPS stripping, OCR behavior, descriptions, search, access scope, and deletion.
 - **Pending:** browser file/folder batch acceptance, real OCR in the target image, worker recovery coverage, hosted privacy and deletion verification, and the shared release gates in M4.
 
+## M5 — Unified search: implemented
+
+- `GET /api/v1/search` returns owner-scoped, case-insensitive substring matches grouped by timeline items, weekly reviews, and reminders, with per-group totals, 10 results by default and at most 20, title-first ordering, and snippets capped at 200 characters. Deleted, non-current, `deleting`-source timeline entries and `invalidated` reviews are excluded.
+- The web client adds a keyboard-accessible Search page with grouped results, jump links to the timeline item, review card, or reminder, and loading, empty, no-result, and error states that keep the entered query.
+- `scripts/evaluate_search.py` runs 22 bilingual queries against 10,000 synthetic timeline rows plus reviews and reminders. On local SQLite, hit@5 is 1.0 in every group and query P95 is about 59–63 ms against a 500 ms target.
+- **Boundaries:** PostgreSQL was not measured because Docker is unavailable, and the measurements use synthetic data. Full-text and vector search, saved searches, and cross-group relevance ranking remain post-MVP.
+
 ## Release and follow-up
 
 Use the [release checklist](../operations/release-checklist.md) and [support matrix](../operations/support-matrix.md) to review evidence and limits. Invite users only after hosted acceptance checks and recovery exercises have actually passed. Scheduled imports/reviews, more connectors, full-text/vector search, and mobile capture remain post-MVP.

@@ -21,6 +21,7 @@ from personal_ai_life_os.api.routes.jobs import router as jobs_router
 from personal_ai_life_os.api.routes.metrics import router as metrics_router
 from personal_ai_life_os.api.routes.reminders import router as reminders_router
 from personal_ai_life_os.api.routes.reviews import router as reviews_router
+from personal_ai_life_os.api.routes.search import router as search_router
 from personal_ai_life_os.api.routes.sources import router as sources_router
 from personal_ai_life_os.config import Settings, settings
 from personal_ai_life_os.db import Base, create_database_engine, create_session_factory
@@ -145,6 +146,7 @@ def create_app(
     application.include_router(items_router, prefix="/api/v1")
     application.include_router(reviews_router, prefix="/api/v1")
     application.include_router(reminders_router, prefix="/api/v1")
+    application.include_router(search_router, prefix="/api/v1")
 
     @application.exception_handler(HTTPException)
     async def http_error_handler(_: Request, error: HTTPException) -> JSONResponse:
