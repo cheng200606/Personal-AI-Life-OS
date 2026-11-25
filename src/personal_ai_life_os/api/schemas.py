@@ -573,6 +573,165 @@ class QaScopeResponse(BaseModel):
     scope: QaScopeRequest
 
 
+class InsightEvidenceResponse(BaseModel):
+    evidence_id: str
+    quote: str
+    confidence: float
+    source_id: str
+    source_name: str
+    source_item_id: str
+    item_title: str
+    occurred_at: str | None
+
+
+class InsightResponse(BaseModel):
+    insight_key: str
+    rule: str
+    rule_label: str
+    entity_id: str
+    entity_type: str
+    entity_name: str
+    severity: Literal["high", "medium", "low"]
+    confidence: float
+    trigger: str
+    evidence: list[InsightEvidenceResponse]
+    suggestion: str
+    dismissed: bool
+    dismissed_reason: str | None
+
+
+class InsightListResponse(BaseModel):
+    total: int
+    dismissed_total: int
+    items: list[InsightResponse]
+
+
+class InsightDismissRequest(BaseModel):
+    insight_key: str = Field(min_length=1, max_length=240)
+    rule: str = Field(min_length=1, max_length=40)
+    entity_id: str | None = None
+    reason: str | None = Field(default=None, max_length=500)
+
+
+class AgentActionCreateRequest(BaseModel):
+    kind: str = Field(min_length=1, max_length=40)
+    payload: dict[str, Any] = Field(default_factory=dict)
+    approved: bool = False
+
+
+class AgentActionResponse(BaseModel):
+    id: str
+    kind: str
+    target_type: str
+    target_id: str | None
+    before: dict[str, Any]
+    after: dict[str, Any]
+    evidence_item_ids: list[str]
+    status: str
+    approval: str
+    error_code: str | None
+    audit: dict[str, Any]
+    expires_at: datetime
+    undo_available: bool
+    created_at: datetime
+    undone_at: datetime | None
+
+
+class AgentActionListResponse(BaseModel):
+    total: int
+    items: list[AgentActionResponse]
+
+
+class AgentToolResponse(BaseModel):
+    name: str
+    kind: str
+    permission: str
+    requires_approval: bool
+    red_line: bool
+    description: str
+
+
+class AgentToolListResponse(BaseModel):
+    total: int
+    items: list[AgentToolResponse]
+
+
+class PluginCatalogEntryResponse(BaseModel):
+    name: str
+    version: str
+    kind: str
+    entrypoint: str
+    description: str
+    permissions: list[str]
+
+
+class PluginCatalogResponse(BaseModel):
+    total: int
+    items: list[PluginCatalogEntryResponse]
+
+
+class PluginResponse(BaseModel):
+    id: str
+    name: str
+    version: str
+    kind: str
+    description: str
+    entrypoint: str
+    status: str
+    permissions: list[str]
+    created_at: datetime
+    updated_at: datetime
+
+
+class PluginListResponse(BaseModel):
+    total: int
+    items: list[PluginResponse]
+
+
+class PluginInstallRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    permissions: list[str] | None = None
+
+
+class PluginStatusRequest(BaseModel):
+    status: Literal["enabled", "disabled"]
+
+
+class PluginInvokeRequest(BaseModel):
+    action: str = Field(min_length=1, max_length=40)
+    payload: dict[str, Any] = Field(default_factory=dict)
+
+
+class PluginAuditResponse(BaseModel):
+    id: str
+    plugin_id: str | None
+    action: str
+    status: str
+    detail: dict[str, Any]
+    created_at: datetime
+
+
+class PluginAuditListResponse(BaseModel):
+    total: int
+    items: list[PluginAuditResponse]
+
+
+class BudgetPurposeResponse(BaseModel):
+    purpose: str
+    cost_usd: Decimal
+    runs: int
+
+
+class BudgetResponse(BaseModel):
+    month: str
+    spent_usd: Decimal
+    limit_usd: Decimal
+    remaining_usd: Decimal
+    warning: bool
+    over_budget: bool
+    by_purpose: list[BudgetPurposeResponse]
+
+
 class SearchTimelineResult(BaseModel):
     id: str
     source_id: str

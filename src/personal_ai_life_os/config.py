@@ -64,6 +64,11 @@ class Settings(BaseSettings):
     graph_extraction_confidence_threshold: float = 0.75
     graph_extraction_max_items: int = 10
     graph_model_providers: str | None = None
+    insight_stale_days: int = 30
+    insight_skill_min_evidence: int = 2
+    insight_skill_stale_days: int = 90
+    agent_undo_hours: int = 24
+    plugin_max_installed: int = 20
 
     @property
     def cors_origin_list(self) -> list[str]:

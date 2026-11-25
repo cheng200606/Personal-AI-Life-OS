@@ -58,6 +58,17 @@ This status reflects repository implementation and local checks. It does not mea
 - Tests cover defaults, validation, owner isolation, local-period idempotency, existing-period reuse, disabled/paused sources, consent fallback, budget fallback, and worker-job enqueue. Full Python suite: 68 passed; browser suite: 2 passed.
 - **Boundaries:** scheduled review generation requires `PROCESSING_MODE=worker`; notifications are in-app only; scheduled sync depends on the API running and the OS task; there is no email/push or server-side filesystem watcher.
 
+## v0.5 — Evidence graph, Q&A, insights, agent, and plugins: implemented
+
+- Evidence graph extraction accepts Claude/Gemini/ZCode/DeepSeek harness/WorkBuddy JSON/JSONL or Markdown plus TXT, text-based PDF, and DOCX. Cloud extraction is source-level opt-in; revoked evidence is excluded and deleted sources cascade-delete evidence.
+- Low-confidence review supports edit, approve, reject, and bulk decisions. Entity merges keep aliases and a reversible snapshot; approved custom ontology types enter later extraction prompts. The timeline and pending page show review counts inline.
+- The Chinese-first Ask page retrieves graph evidence, timeline items, and reviews with source/project/topic/date scope, remembers the last scope, and returns facts, citations, confidence, fact/inference/uncertain labels, missing information, and suggestions. Threads are stored locally and can be exported or deleted.
+- Four explainable rule insights cover goals, commitments, projects, and skills; false positives can be dismissed and restored without repeating.
+- Agent actions create reminders, tasks, projects, growth records, goal progress, and review drafts with audit metadata and a 24-hour undo. The tool policy layer rejects external sending, file changes, spending, and deletion or goal changes without explicit approval.
+- Local plugin manifests cover connectors and agent tools with declared permissions, audit, failure isolation, a reference JSON/Markdown connector with preview/import/delete, and a reference graph-search tool.
+- `scripts/evaluate_graph_qa.py` runs 30 bilingual synthetic cases across four question types plus revoked and deleted evidence. The latest run reports citation accuracy 1.0, 0 unsupported claims, and about 20–30 ms P95 on local SQLite.
+- **Boundaries:** extraction is still API-triggered rather than fully automatic; Q&A uses keyword and rule retrieval rather than semantic/vector search; plugin safety is permission declaration plus audit, not a strong sandbox; no multi-device sync, mobile, desktop package, OCR of scanned PDFs, or model-written answers.
+
 ## Release and follow-up
 
 Use the [release checklist](../operations/release-checklist.md) and [support matrix](../operations/support-matrix.md) to review evidence and limits. Invite users only after hosted acceptance checks and recovery exercises have actually passed. Additional connectors, full-text/vector search, email or push delivery, and mobile capture remain post-MVP.

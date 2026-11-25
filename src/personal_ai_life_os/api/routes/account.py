@@ -13,8 +13,18 @@ from sqlalchemy import select
 
 from personal_ai_life_os.api.deps import CurrentUserDep, DeletionUserDep, SessionDep
 from personal_ai_life_os.models import (
+    AgentAction,
     BackgroundJob,
+    EntityAlias,
+    EntityMergeLog,
+    GraphEntity,
+    GraphEvidence,
+    GraphRelation,
+    InsightDismissal,
     ModelRun,
+    PluginAuditLog,
+    PluginManifest,
+    QaThread,
     Reminder,
     Review,
     SourceConnection,
@@ -59,6 +69,50 @@ def download_archive(
             select(BackgroundJob)
             .where(BackgroundJob.owner_id == user.id)
             .order_by(BackgroundJob.created_at, BackgroundJob.id)
+        )
+    )
+    graph_entities = list(
+        session.scalars(select(GraphEntity).where(GraphEntity.owner_id == user.id))
+    )
+    graph_relations = list(
+        session.scalars(select(GraphRelation).where(GraphRelation.owner_id == user.id))
+    )
+    graph_evidence = list(
+        session.scalars(select(GraphEvidence).where(GraphEvidence.owner_id == user.id))
+    )
+    entity_aliases = list(
+        session.scalars(select(EntityAlias).where(EntityAlias.owner_id == user.id))
+    )
+    entity_merges = list(
+        session.scalars(select(EntityMergeLog).where(EntityMergeLog.owner_id == user.id))
+    )
+    qa_threads = list(
+        session.scalars(
+            select(QaThread)
+            .where(QaThread.owner_id == user.id)
+            .order_by(QaThread.created_at, QaThread.id)
+        )
+    )
+    insight_dismissals = list(
+        session.scalars(
+            select(InsightDismissal).where(InsightDismissal.owner_id == user.id)
+        )
+    )
+    agent_actions = list(
+        session.scalars(
+            select(AgentAction)
+            .where(AgentAction.owner_id == user.id)
+            .order_by(AgentAction.created_at, AgentAction.id)
+        )
+    )
+    plugin_manifests = list(
+        session.scalars(
+            select(PluginManifest).where(PluginManifest.owner_id == user.id)
+        )
+    )
+    plugin_audit = list(
+        session.scalars(
+            select(PluginAuditLog).where(PluginAuditLog.owner_id == user.id)
         )
     )
     archive = BytesIO()
@@ -196,6 +250,206 @@ def download_archive(
                         "completed_at": _iso(job.completed_at),
                     }
                     for job in jobs
+                ]
+            ),
+        )
+        bundle.writestr(
+            "graph-entities.json",
+            _json_bytes(
+                [
+                    {
+                        "id": entity.id,
+                        "entity_type": entity.entity_type,
+                        "name": entity.name,
+                        "normalized_name": entity.normalized_name,
+                        "summary": entity.summary,
+                        "confidence": entity.confidence,
+                        "status": entity.status,
+                        "merged_into_id": entity.merged_into_id,
+                        "created_by": entity.created_by,
+                        "created_at": _iso(entity.created_at),
+                        "updated_at": _iso(entity.updated_at),
+                    }
+                    for entity in graph_entities
+                ]
+            ),
+        )
+        bundle.writestr(
+            "graph-relations.json",
+            _json_bytes(
+                [
+                    {
+                        "id": relation.id,
+                        "from_entity_id": relation.from_entity_id,
+                        "to_entity_id": relation.to_entity_id,
+                        "relation_type": relation.relation_type,
+                        "confidence": relation.confidence,
+                        "status": relation.status,
+                        "valid_from": _iso(relation.valid_from),
+                        "valid_to": _iso(relation.valid_to),
+                        "created_by": relation.created_by,
+                        "created_at": _iso(relation.created_at),
+                    }
+                    for relation in graph_relations
+                ]
+            ),
+        )
+        bundle.writestr(
+            "graph-evidence.json",
+            _json_bytes(
+                [
+                    {
+                        "id": evidence.id,
+                        "entity_id": evidence.entity_id,
+                        "relation_id": evidence.relation_id,
+                        "source_id": evidence.source_id,
+                        "source_item_id": evidence.source_item_id,
+                        "quote": evidence.quote,
+                        "locator": evidence.locator,
+                        "confidence": evidence.confidence,
+                        "availability": evidence.availability,
+                        "created_at": _iso(evidence.created_at),
+                    }
+                    for evidence in graph_evidence
+                ]
+            ),
+        )
+        bundle.writestr(
+            "entity-aliases.json",
+            _json_bytes(
+                [
+                    {
+                        "id": alias.id,
+                        "entity_id": alias.entity_id,
+                        "alias": alias.alias,
+                        "normalized_alias": alias.normalized_alias,
+                        "created_at": _iso(alias.created_at),
+                    }
+                    for alias in entity_aliases
+                ]
+            ),
+        )
+        bundle.writestr(
+            "entity-merges.json",
+            _json_bytes(
+                [
+                    {
+                        "id": merge.id,
+                        "source_entity_id": merge.source_entity_id,
+                        "target_entity_id": merge.target_entity_id,
+                        "status": merge.status,
+                        "snapshot": merge.snapshot,
+                        "created_at": _iso(merge.created_at),
+                        "undone_at": _iso(merge.undone_at),
+                    }
+                    for merge in entity_merges
+                ]
+            ),
+        )
+        bundle.writestr(
+            "qa-threads.json",
+            _json_bytes(
+                [
+                    {
+                        "id": thread.id,
+                        "title": thread.title,
+                        "scope": thread.scope,
+                        "created_at": _iso(thread.created_at),
+                        "updated_at": _iso(thread.updated_at),
+                        "messages": [
+                            {
+                                "id": message.id,
+                                "role": message.role,
+                                "content": message.content,
+                                "answer": message.answer,
+                                "citations": message.citations,
+                                "confidence": message.confidence,
+                                "created_at": _iso(message.created_at),
+                            }
+                            for message in thread.messages
+                        ],
+                    }
+                    for thread in qa_threads
+                ]
+            ),
+        )
+        bundle.writestr(
+            "insight-dismissals.json",
+            _json_bytes(
+                [
+                    {
+                        "id": dismissal.id,
+                        "insight_key": dismissal.insight_key,
+                        "rule": dismissal.rule,
+                        "entity_id": dismissal.entity_id,
+                        "reason": dismissal.reason,
+                        "created_at": _iso(dismissal.created_at),
+                    }
+                    for dismissal in insight_dismissals
+                ]
+            ),
+        )
+        bundle.writestr(
+            "agent-actions.json",
+            _json_bytes(
+                [
+                    {
+                        "id": action.id,
+                        "kind": action.kind,
+                        "target_type": action.target_type,
+                        "target_id": action.target_id,
+                        "before": action.before_json,
+                        "after": action.after_json,
+                        "evidence_item_ids": action.evidence_json,
+                        "status": action.status,
+                        "approval": action.approval,
+                        "error_code": action.error_code,
+                        "audit": action.audit_json,
+                        "expires_at": _iso(action.expires_at),
+                        "created_at": _iso(action.created_at),
+                        "undone_at": _iso(action.undone_at),
+                    }
+                    for action in agent_actions
+                ]
+            ),
+        )
+        bundle.writestr(
+            "plugin-manifests.json",
+            _json_bytes(
+                [
+                    {
+                        "id": plugin.id,
+                        "name": plugin.name,
+                        "version": plugin.version,
+                        "kind": plugin.kind,
+                        "description": plugin.description,
+                        "entrypoint": plugin.entrypoint,
+                        "status": plugin.status,
+                        "permissions": [
+                            permission.permission
+                            for permission in plugin.permissions
+                            if permission.granted
+                        ],
+                        "created_at": _iso(plugin.created_at),
+                        "updated_at": _iso(plugin.updated_at),
+                    }
+                    for plugin in plugin_manifests
+                ]
+            ),
+        )
+        bundle.writestr(
+            "plugin-audit.json",
+            _json_bytes(
+                [
+                    {
+                        "id": entry.id,
+                        "plugin_id": entry.plugin_id,
+                        "action": entry.action,
+                        "status": entry.status,
+                        "detail": entry.detail_json,
+                        "created_at": _iso(entry.created_at),
+                    }
+                    for entry in plugin_audit
                 ]
             ),
         )

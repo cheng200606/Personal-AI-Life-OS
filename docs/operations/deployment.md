@@ -114,4 +114,6 @@ Keep the journal's `.deletion-tombstones/` prefix available for every restorable
 
 Application rollback is safe only when the previous image can read the current schema. Take a database and object snapshot before migrations. Do not roll back a schema migration by restoring an older database without also restoring the matching object snapshot and replaying deletion tombstones. The API runs Alembic migrations before serving traffic and replays deletion tombstones during startup.
 
+The v0.5 graph and Q&A work adds revisions `d2f5a8c14e73` (graph tables), `f4a9d7b36c21` (source cloud consent), `b8e2c4d6f901` (question threads and ontology versions), and `d7f1a3b5c902` (insights, agent actions, and plugins). Each revision has a downgrade path; downgrading drops only the tables or columns introduced by that revision and does not restore deleted user data. Prefer forward fixes or a snapshot restore over downgrading in place, and verify `uv run alembic check` reports no model drift before deploying.
+
 This template does not configure cloud IAM, bucket lifecycle, managed PostgreSQL, DNS, alert delivery, or a CI image registry. Those remain operator work and require evidence in the release record.

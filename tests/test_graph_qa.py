@@ -1,5 +1,7 @@
 import json
 from datetime import UTC, datetime
+from io import BytesIO
+from zipfile import ZipFile
 
 from sqlalchemy import select
 from test_reviews_account import import_memory, token_for
@@ -268,6 +270,23 @@ def test_scope_memory_history_export_and_delete(client) -> None:
     assert markdown.status_code == 200
     assert "## 问：" in markdown.text
     assert "#### 引用" in markdown.text
+
+    archive = client.get("/api/v1/account/archive", headers=_headers(token))
+    assert archive.status_code == 200
+    with ZipFile(BytesIO(archive.content)) as bundle:
+        names = set(bundle.namelist())
+        assert {
+            "graph-entities.json",
+            "graph-relations.json",
+            "graph-evidence.json",
+            "qa-threads.json",
+            "agent-actions.json",
+            "plugin-manifests.json",
+        } <= names
+        evidence = json.loads(bundle.read("graph-evidence.json"))
+        assert evidence and evidence[0]["quote"]
+        archived_threads = json.loads(bundle.read("qa-threads.json"))
+        assert archived_threads and archived_threads[0]["messages"]
 
     deleted = client.delete("/api/v1/qa/threads/" + thread_id, headers=_headers(token))
     assert deleted.status_code == 204

@@ -51,7 +51,13 @@ The MVP uses a database-backed queue with leases, bounded retries, and owner-sco
 
 Manually selected source items can be sent to the configured OpenAI-compatible provider for graph extraction. The service returns entities, relations, exact quotes, and confidence; high-confidence records become active, low-confidence records enter a review state, and every record keeps item-level evidence. Source-level cloud consent is required, and the monthly/per-call model budget is enforced. A completed identical batch is idempotent. Low-confidence items can be edited, approved, or rejected in the review queue; duplicate entities can be merged through aliases with an undo snapshot, and approved custom ontology types enter later extraction prompts.
 
-The Q&A layer answers locally without a model call. It retrieves active evidence from approved entities and relations, filters by source, project/topic, and date range, excludes revoked sources, deleted items, and inactive evidence, and returns facts, citations, confidence, fact/inference/uncertain labels, missing information, and action suggestions. Question threads are stored locally, remember the last scope, and can be exported or deleted. Rule insights, agent actions, and plugins remain later v0.5 work.
+The Q&A layer answers locally without a model call. It retrieves active evidence from approved entities and relations, filters by source, project/topic, and date range, excludes revoked sources, deleted items, and inactive evidence, and returns facts, citations, confidence, fact/inference/uncertain labels, missing information, and action suggestions. Question threads are stored locally, remember the last scope, and can be exported or deleted.
+
+Rule insights evaluate four explainable conditions over active entities and evidence: overdue goals, commitments without follow-up, stalled projects, and skills with weak or stale evidence. Dismissals are stored per owner and key so a false positive does not repeat.
+
+Agent actions are deterministic internal writes: reminders, task/project/growth entities, goal-progress records, and review drafts. Each action stores before/after values, evidence item IDs, audit metadata, and a 24-hour undo deadline. The tool policy layer rejects external sending, original-file changes, spending or irreversible transactions, and deleting data or changing goals unless explicit human approval is supplied.
+
+Plugins are local manifests for connectors and agent tools. Each manifest declares permissions; undeclared permissions are denied at invocation. The reference connector previews and imports user-selected JSON/JSONL/Markdown, and the reference agent tool searches active graph entities and evidence. Invocation and failures are audited, and a plugin failure does not alter the main application flow.
 
 ## Data entities
 
@@ -68,6 +74,9 @@ The Q&A layer answers locally without a model call. It retrieves active evidence
 - **ExtractionRun / GraphReviewItem:** model/provider/cost metadata for a selected batch and low-confidence records awaiting review.
 - **EntityAlias / EntityMergeLog / OntologyType:** durable aliases, reversible merge snapshots, and proposed or approved custom entity/relation types with creator and version.
 - **QaThread / QaMessage:** local question threads with remembered scope, stored questions, and structured answers with citations.
+- **InsightDismissal:** owner-scoped ignored rule insight key with an optional reason.
+- **AgentAction:** action kind, before/after values, evidence item IDs, status, approval mode, audit metadata, and undo expiry.
+- **PluginManifest / PluginPermission / PluginAuditLog:** local plugin identity, declared permissions, and invocation or lifecycle audit.
 
 ## Search and limits
 

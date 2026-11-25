@@ -13,6 +13,10 @@ An Apache-2.0 open source project for importing selected chat exports, photos, a
 - Extract an evidence graph from manually selected items: entities, relations, exact quotes, confidence, and a low-confidence review state. Cloud extraction requires per-source consent, a configured provider, and the monthly/per-call budget.
 - Review, edit, approve, or reject low-confidence items; merge duplicate entities with a reversible snapshot; and approve custom ontology types before they enter later extraction prompts.
 - Ask questions over active evidence in the Chinese-first Ask page. Answers include structured facts, original citations, confidence, fact/inference/uncertain labels, missing information, and action suggestions. Threads remember the last scope and can be exported or deleted; revoked sources and deleted evidence are excluded.
+- Review four explainable rule insights: overdue goals, commitments without follow-up, stalled projects, and skills with weak evidence. Dismissed false positives do not repeat.
+- Let the agent create reminders, tasks, projects, growth records, goal progress, and review drafts automatically, with an in-app audit record and a 24-hour undo. External sending, file changes, spending, and deletion or goal changes always require human approval.
+- Install local connector and agent-tool plugins from a manifest. The reference JSON/Markdown connector can preview and import selected files; the reference graph-search tool reads owner-scoped evidence. Undeclared permissions are denied and plugin failures are isolated.
+- Use the Chinese-first navigation for timeline, Ask, graph, pending review, projects and goals, reviews, search, and settings, including budget, plugins, and source authorization.
 - Import up to ten user-selected JPEG, PNG, or WebP photos, including from a selected folder. The server re-encodes images to strip metadata and runs OCR inline or as a recoverable job, depending on configuration. Optional external reviews and photo descriptions require consent and use jobs in worker mode.
 - Browse and search an owner-scoped timeline with date and source filters, inspect the original source, and export stable Markdown files with conflict handling.
 - Search timeline items, weekly reviews, and reminders together on one page, with grouped results, per-group totals, snippets, and links back to each record.
@@ -75,6 +79,7 @@ uv run ruff check .
 uv run pytest -q
 uv run python scripts/evaluate_reviews.py
 uv run python scripts/evaluate_search.py
+uv run python scripts/evaluate_graph_qa.py
 uv run python scripts/benchmark_mvp.py
 ```
 
@@ -86,12 +91,14 @@ The benchmark uses only generated data on local SQLite; it is not evidence of ho
 - `web/`: React and TypeScript review client.
 - `migrations/`: versioned SQLAlchemy/Alembic schema changes.
 - `fixtures/synthetic/`: fabricated import and review evaluation data only.
-- `scripts/`: synthetic review evaluation and local performance benchmark.
+- `scripts/`: synthetic review, search, graph-Q&A evaluation, and local performance benchmarks.
 - `docs/`: product requirements, architecture, roadmap, operations, and contributor guidance.
 
 ## 中文简介
 
 Personal AI Life OS 是一个 Apache-2.0 开源的个人工作与学习记忆系统。用户明确选择资料后，可以导入 ChatGPT、Claude、Gemini、ZCode、DeepSeek harness、WorkBuddy 导出，以及 Markdown/TXT/PDF/DOCX 文档，查看可追溯的时间线，抽取带证据的实体/关系图谱，生成可编辑周复盘与提醒，并导出 Obsidian Markdown。可设置每周复盘计划并在应用内查看到期/逾期提醒，也可用 Windows 计划任务运行可重复的文件夹同步。
+
+v0.5 进一步提供中文优先的时间线、提问、图谱、待审、项目与目标、复盘、搜索和设置界面；图谱支持低置信度待审、可撤销实体合并与自定义本体；个人问答只使用有效证据并给出引用与置信度；四条规则洞察支持忽略误报；Agent 可在 24 小时内撤销内部写入，四条红线必须人工批准；本地插件清单同时覆盖参考连接器与图谱检索工具。
 
 MVP 的本地开发主流程已实现，但尚未部署到托管环境，也未通过真实用户私测准入。不要把真实个人资料放入未验证的共享部署；上线前请完成[发布清单](docs/operations/release-checklist.md)。
 

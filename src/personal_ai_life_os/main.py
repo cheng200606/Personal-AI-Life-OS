@@ -13,17 +13,21 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from personal_ai_life_os.api.routes.account import router as account_router
+from personal_ai_life_os.api.routes.agent import router as agent_router
 from personal_ai_life_os.api.routes.auth import router as auth_router
+from personal_ai_life_os.api.routes.budget import router as budget_router
 from personal_ai_life_os.api.routes.extractions import router as extractions_router
 from personal_ai_life_os.api.routes.graph import router as graph_router
 from personal_ai_life_os.api.routes.graph_merge import router as graph_merge_router
 from personal_ai_life_os.api.routes.graph_review import router as graph_review_router
 from personal_ai_life_os.api.routes.health import router as health_router
 from personal_ai_life_os.api.routes.imports import router as imports_router
+from personal_ai_life_os.api.routes.insights import router as insights_router
 from personal_ai_life_os.api.routes.items import router as items_router
 from personal_ai_life_os.api.routes.jobs import router as jobs_router
 from personal_ai_life_os.api.routes.metrics import router as metrics_router
 from personal_ai_life_os.api.routes.ontology import router as ontology_router
+from personal_ai_life_os.api.routes.plugins import router as plugins_router
 from personal_ai_life_os.api.routes.qa import router as qa_router
 from personal_ai_life_os.api.routes.reminders import router as reminders_router
 from personal_ai_life_os.api.routes.review_schedule import router as review_schedule_router
@@ -170,6 +174,10 @@ def create_app(
     application.include_router(ontology_router, prefix="/api/v1")
     application.include_router(extractions_router, prefix="/api/v1")
     application.include_router(qa_router, prefix="/api/v1")
+    application.include_router(insights_router, prefix="/api/v1")
+    application.include_router(agent_router, prefix="/api/v1")
+    application.include_router(plugins_router, prefix="/api/v1")
+    application.include_router(budget_router, prefix="/api/v1")
     application.include_router(reviews_router, prefix="/api/v1")
     application.include_router(review_schedule_router, prefix="/api/v1")
     application.include_router(reminders_router, prefix="/api/v1")

@@ -134,6 +134,9 @@ def test_repeated_extraction_is_idempotent(client, monkeypatch) -> None:
     assert calls == 1
     assert client.get("/api/v1/graph/entities", headers=_headers(token)).json()["total"] == 2
     assert client.get("/api/v1/graph/relations", headers=_headers(token)).json()["total"] == 1
+    with client.app.state.session_factory() as session:
+        runs = list(session.scalars(select(ModelRun).where(ModelRun.purpose == "graph_extraction")))
+        assert len(runs) == 1
 
 
 def test_extraction_requires_consent_and_owner_scope(client, monkeypatch) -> None:

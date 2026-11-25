@@ -498,6 +498,113 @@ class QaMessage(Base):
     thread: Mapped[QaThread] = relationship(back_populates="messages")
 
 
+class InsightDismissal(Base):
+    __tablename__ = "insight_dismissals"
+    __table_args__ = (
+        UniqueConstraint("owner_id", "insight_key", name="uq_insight_dismissal_owner_key"),
+        Index("ix_insight_dismissals_owner_rule", "owner_id", "rule"),
+    )
+
+    id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=new_id)
+    owner_id: Mapped[str] = mapped_column(
+        Uuid(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    insight_key: Mapped[str] = mapped_column(String(240))
+    rule: Mapped[str] = mapped_column(String(40), index=True)
+    entity_id: Mapped[str | None] = mapped_column(
+        Uuid(as_uuid=False), ForeignKey("graph_entities.id", ondelete="SET NULL"), nullable=True
+    )
+    reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
+
+
+class AgentAction(Base):
+    __tablename__ = "agent_actions"
+    __table_args__ = (
+        Index("ix_agent_actions_owner_created", "owner_id", "created_at"),
+        Index("ix_agent_actions_owner_status", "owner_id", "status"),
+    )
+
+    id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=new_id)
+    owner_id: Mapped[str] = mapped_column(
+        Uuid(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    kind: Mapped[str] = mapped_column(String(40), index=True)
+    target_type: Mapped[str] = mapped_column(String(40), default="internal")
+    target_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    before_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    after_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    evidence_json: Mapped[list] = mapped_column(JSON, default=list)
+    status: Mapped[str] = mapped_column(String(24), default="active", index=True)
+    approval: Mapped[str] = mapped_column(String(24), default="automatic")
+    error_code: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    audit_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    expires_at: Mapped[datetime] = mapped_column(UTCDateTime())
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
+    undone_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
+
+
+class PluginManifest(Base):
+    __tablename__ = "plugin_manifests"
+    __table_args__ = (
+        UniqueConstraint("owner_id", "name", name="uq_plugin_manifest_owner_name"),
+        Index("ix_plugin_manifests_owner_status", "owner_id", "status"),
+    )
+
+    id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=new_id)
+    owner_id: Mapped[str] = mapped_column(
+        Uuid(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    name: Mapped[str] = mapped_column(String(120))
+    version: Mapped[str] = mapped_column(String(40))
+    kind: Mapped[str] = mapped_column(String(24))  # connector / agent_tool
+    description: Mapped[str] = mapped_column(String(500), default="")
+    entrypoint: Mapped[str] = mapped_column(String(200))
+    status: Mapped[str] = mapped_column(String(24), default="installed", index=True)
+    config_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow, onupdate=utcnow)
+
+    permissions: Mapped[list["PluginPermission"]] = relationship(
+        back_populates="plugin", cascade="all, delete-orphan"
+    )
+
+
+class PluginPermission(Base):
+    __tablename__ = "plugin_permissions"
+    __table_args__ = (UniqueConstraint("plugin_id", "permission", name="uq_plugin_permission"),)
+
+    id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=new_id)
+    owner_id: Mapped[str] = mapped_column(
+        Uuid(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    plugin_id: Mapped[str] = mapped_column(
+        Uuid(as_uuid=False), ForeignKey("plugin_manifests.id", ondelete="CASCADE"), index=True
+    )
+    permission: Mapped[str] = mapped_column(String(80))
+    granted: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
+
+    plugin: Mapped[PluginManifest] = relationship(back_populates="permissions")
+
+
+class PluginAuditLog(Base):
+    __tablename__ = "plugin_audit_logs"
+    __table_args__ = (Index("ix_plugin_audit_logs_owner_created", "owner_id", "created_at"),)
+
+    id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=new_id)
+    owner_id: Mapped[str] = mapped_column(
+        Uuid(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    plugin_id: Mapped[str | None] = mapped_column(
+        Uuid(as_uuid=False), ForeignKey("plugin_manifests.id", ondelete="SET NULL"), nullable=True
+    )
+    action: Mapped[str] = mapped_column(String(40))
+    status: Mapped[str] = mapped_column(String(24))
+    detail_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
+
+
 class ModelRun(Base):
     __tablename__ = "model_runs"
     __table_args__ = (Index("ix_model_runs_owner_created", "owner_id", "created_at"),)
