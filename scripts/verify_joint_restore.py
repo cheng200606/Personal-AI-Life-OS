@@ -16,7 +16,7 @@ from personal_ai_life_os.config import Settings
 from personal_ai_life_os.main import create_app
 from personal_ai_life_os.models import SourceItem
 
-ENDPOINT = "http://127.0.0.1:15666"
+ENDPOINT = os.environ.get("LIFEOS_REHEARSAL_S3_ENDPOINT", "http://127.0.0.1:15666")
 DATABASE = "postgresql+psycopg://lifeos:lifeos_dev@127.0.0.1:5432/"
 
 
@@ -138,10 +138,13 @@ def start_rehearsal(database: str, restored_database: str, s3, primary: str, rec
 
 
 def main() -> None:
-    os.environ.update(
-        AWS_ACCESS_KEY_ID="synthetic", AWS_SECRET_ACCESS_KEY="synthetic",
-        AWS_SESSION_TOKEN="", AWS_DEFAULT_REGION="us-east-1",
-    )
+    # Keep credentials supplied through the environment so the rehearsal can target either
+    # the Moto emulator or a real S3-compatible server.
+    os.environ.setdefault("AWS_ACCESS_KEY_ID", "synthetic")
+    os.environ.setdefault("AWS_SECRET_ACCESS_KEY", "synthetic")
+    os.environ.setdefault("AWS_DEFAULT_REGION", "us-east-1")
+    if not os.environ.get("AWS_SESSION_TOKEN"):
+        os.environ.pop("AWS_SESSION_TOKEN", None)
     run = uuid4().hex
     database, restored_database = f"lifeos_joint_{run}", f"lifeos_replay_{run}"
     primary, recovery, journal = (f"lifeos-{role}-{run}" for role in ("primary", "recovery", "journal"))
