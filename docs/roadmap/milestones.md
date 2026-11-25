@@ -25,6 +25,7 @@ This status reflects repository implementation and local checks. It does not mea
 
 - On-demand weekly review, cited template output, optional consent-gated OpenAI review, output citation validation, model-failure fallback, and Markdown export.
 - User can edit/confirm review text and create, complete, snooze, or cancel reminders.
+- Review suggestions can be edited, dismissed, or restored while the review is a draft; dismissed items are excluded from the rendered review until restored.
 - Synthetic fixture includes 30 review cases. Local deterministic evidence evaluation and API tests verify citation and fallback behavior.
 
 ## M4 — Text private beta readiness: implementation present; hosted gates pending
@@ -32,6 +33,7 @@ This status reflects repository implementation and local checks. It does not mea
 - Invitation-only production configuration, private S3 adapter, Caddy TLS template, account archive/delete, metrics, backup/restore scripts, and operational checklists are in the repository.
 - Two-owner API tests cover isolation; source/account deletion replay is exercised with synthetic data.
 - **Pending:** actual TLS/DNS and cloud configuration, private bucket policy and lifecycle verification, hosted database/object authorization tests, production dashboards, backup restore exercise, and review by an operator before inviting real users.
+- **Solo-local scope:** shared-original deletion is covered by tests and explicit UI wording; the maintainer confirmed that prompt on 2026-11-25. Hosted gates and the first-user study are not current targets.
 
 ## M2b — Photo implementation present; end-to-end acceptance pending
 

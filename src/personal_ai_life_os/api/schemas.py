@@ -183,6 +183,27 @@ class ReviewUpdateRequest(BaseModel):
     final_text: str = Field(min_length=1, max_length=50000)
 
 
+class ReviewSuggestionUpdateRequest(BaseModel):
+    text: str | None = Field(default=None, max_length=1200)
+    status: Literal["pending", "dismissed"] | None = None
+
+    @field_validator("text")
+    @classmethod
+    def normalize_text(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        normalized = " ".join(value.split())
+        if not normalized:
+            raise ValueError("Suggestion text cannot be empty.")
+        return normalized
+
+    @model_validator(mode="after")
+    def require_change(self) -> "ReviewSuggestionUpdateRequest":
+        if self.text is None and self.status is None:
+            raise ValueError("Provide suggestion text or status.")
+        return self
+
+
 class ReviewResponse(BaseModel):
     id: str
     period_start: datetime

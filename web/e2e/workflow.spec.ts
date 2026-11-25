@@ -60,6 +60,16 @@ test('selects, traces, reviews, exports and revokes synthetic content', async ({
   const chat = page.locator('.manage-source').filter({ hasText: 'conversations.json' })
   await chat.getByRole('button', { name: 'Revoke' }).click()
   await expect(chat.getByText(/· revoked/)).toBeVisible()
+
+  let deleteMessage = ''
+  page.once('dialog', async (dialog) => {
+    deleteMessage = dialog.message()
+    await dialog.dismiss()
+  })
+  await page.getByRole('button', { name: /Timeline/ }).click()
+  await expect(page.locator('.timeline-item').first()).toBeVisible()
+  await page.locator('.timeline-item').first().getByRole('button', { name: 'Delete imported source' }).click()
+  expect(deleteMessage).toContain('every timeline entry created from that source')
 })
 
 test('enforces photo directory limits and reports partial imports', async ({ page }, testInfo) => {

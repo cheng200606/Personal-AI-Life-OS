@@ -254,6 +254,110 @@ def test_model_suggestion_can_be_saved_as_source_linked_reminder(client, monkeyp
     assert model_usage[0]["cost_usd"] is not None
 
 
+def test_review_suggestions_can_be_edited_dismissed_and_restored(client, monkeypatch) -> None:
+    import personal_ai_life_os.api.routes.reviews as review_routes
+
+    token = token_for(client, "suggestion-edit@example.com")
+    _, item_ids = import_memory(client, token)
+    config = client.app.state.settings
+    config.model_provider = "openai"
+    config.openai_api_key = "synthetic-api-key"
+    configure_synthetic_model_pricing(config)
+    headers = {"Authorization": "Bearer " + token}
+    consent = client.put(
+        "/api/v1/auth/ai-consent",
+        headers=headers,
+        json={"enabled": True, "disclosure_version": config.model_disclosure_version},
+    )
+    assert consent.status_code == 200, consent.text
+
+    def suggest(items, _config):
+        return (
+            {
+                "facts": [],
+                "suggestions": [
+                    {"text": "Review the import flow.", "source_ids": [items[0].id]},
+                    {"text": "Annotate the first item.", "source_ids": [items[0].id]},
+                ],
+            },
+            1,
+            12,
+            5,
+        )
+
+    monkeypatch.setattr(review_routes, "_call_openai", suggest)
+    response = client.post(
+        "/api/v1/reviews/generate",
+        headers=headers,
+        json={"period_start": "2026-11-16", "period_end": "2026-11-18", "use_external_model": True},
+    )
+    assert response.status_code == 201, response.text
+    review = response.json()
+    first = review["draft"]["suggestions"][0]
+    assert first["status"] == "pending"
+    assert set(first["source_ids"]).issubset(item_ids)
+    assert "Review the import flow." in review["final_text"]
+
+    edited = client.patch(
+        "/api/v1/reviews/" + review["id"] + "/suggestions/0",
+        headers=headers,
+        json={"text": "  Review the edited import flow.  "},
+    )
+    assert edited.status_code == 200, edited.text
+    assert edited.json()["draft"]["suggestions"][0]["text"] == "Review the edited import flow."
+    assert edited.json()["draft"]["suggestions"][0]["source_ids"] == first["source_ids"]
+    assert "Review the edited import flow." in edited.json()["final_text"]
+    assert "Review the import flow." not in edited.json()["final_text"]
+
+    dismissed = client.patch(
+        "/api/v1/reviews/" + review["id"] + "/suggestions/0",
+        headers=headers,
+        json={"status": "dismissed"},
+    )
+    assert dismissed.status_code == 200, dismissed.text
+    assert dismissed.json()["draft"]["suggestions"][0]["status"] == "dismissed"
+    assert "Review the edited import flow." not in dismissed.json()["final_text"]
+    assert "Annotate the first item." in dismissed.json()["final_text"]
+
+    restored = client.patch(
+        "/api/v1/reviews/" + review["id"] + "/suggestions/0",
+        headers=headers,
+        json={"status": "pending", "text": "Restored follow-up."},
+    )
+    assert restored.status_code == 200, restored.text
+    assert restored.json()["draft"]["suggestions"][0]["status"] == "pending"
+    assert "Restored follow-up." in restored.json()["final_text"]
+
+    missing = client.patch(
+        "/api/v1/reviews/" + review["id"] + "/suggestions/9",
+        headers=headers,
+        json={"status": "dismissed"},
+    )
+    assert missing.status_code == 404
+    other = token_for(client, "other-suggestion@example.com")
+    assert (
+        client.patch(
+            "/api/v1/reviews/" + review["id"] + "/suggestions/0",
+            headers={"Authorization": "Bearer " + other},
+            json={"status": "dismissed"},
+        ).status_code
+        == 404
+    )
+
+    confirmed = client.patch(
+        "/api/v1/reviews/" + review["id"], headers=headers, json={"final_text": "A checked reflection."}
+    )
+    assert confirmed.status_code == 200
+    assert (
+        client.patch(
+            "/api/v1/reviews/" + review["id"] + "/suggestions/1",
+            headers=headers,
+            json={"status": "dismissed"},
+        ).status_code
+        == 409
+    )
+
+
 def test_external_review_failure_falls_back_to_cited_template(client, monkeypatch) -> None:
     import httpx
 

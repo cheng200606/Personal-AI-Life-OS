@@ -20,6 +20,7 @@ from personal_ai_life_os.api.deps import CurrentUserDep, SessionDep
 from personal_ai_life_os.api.schemas import (
     ReviewGenerateRequest,
     ReviewResponse,
+    ReviewSuggestionUpdateRequest,
     ReviewUpdateRequest,
     SourceItemResponse,
 )
@@ -93,7 +94,7 @@ def _render_markdown(draft: dict, items: list[SourceItem]) -> str:
             "[source:" + item.id + "]" for item in citations
         )
         lines.append("- " + fact["text"].strip() + (" " + citation_text if citation_text else ""))
-    suggestions = draft.get("suggestions", [])
+    suggestions = [entry for entry in draft.get("suggestions", []) if entry.get("status") != "dismissed"]
     if suggestions:
         lines.extend(["", "## Suggestions", ""])
         for suggestion in suggestions:
@@ -168,6 +169,18 @@ def _call_openai(items: list[SourceItem], config: Settings) -> tuple[dict, int, 
     return clean, latency, int(usage.get("prompt_tokens", 0)), int(usage.get("completion_tokens", 0))
 
 
+def _draft_with_status(draft: dict) -> dict:
+    normalized = dict(draft or {})
+    suggestions = []
+    for suggestion in normalized.get("suggestions", []):
+        entry = dict(suggestion)
+        entry.setdefault("status", "pending")
+        suggestions.append(entry)
+    if "suggestions" in normalized:
+        normalized["suggestions"] = suggestions
+    return normalized
+
+
 def _response(review: Review) -> ReviewResponse:
     source_items = [
         SourceItemResponse.model_validate(response_item(item))
@@ -179,7 +192,7 @@ def _response(review: Review) -> ReviewResponse:
         period_start=review.period_start,
         period_end=review.period_end,
         status=review.status,
-        draft=review.draft_json,
+        draft=_draft_with_status(review.draft_json),
         final_text=review.final_text,
         source_items=source_items,
         created_at=review.created_at,
@@ -434,6 +447,52 @@ def update_review(
         )
     review.final_text = payload.final_text.strip()
     review.status = "confirmed"
+    session.commit()
+    session.refresh(review)
+    return _response(review)
+
+
+@router.patch("/{review_id}/suggestions/{index}", response_model=ReviewResponse)
+def update_review_suggestion(
+    review_id: str,
+    index: int,
+    payload: ReviewSuggestionUpdateRequest,
+    user: CurrentUserDep,
+    session: SessionDep,
+) -> ReviewResponse:
+    review = _review_or_404(session, review_id, user.id)
+    if review.status == "processing":
+        raise HTTPException(409, detail={"code": "review_processing", "message": "Wait for the review draft to finish."})
+    if review.status == "confirmed":
+        raise HTTPException(
+            409,
+            detail={"code": "review_already_confirmed", "message": "This review is already saved. Suggestions can no longer change."},
+        )
+    if review.status == "invalidated":
+        raise HTTPException(
+            409,
+            detail={"code": "review_evidence_removed", "message": "A cited source was deleted. Regenerate this review before editing suggestions."},
+        )
+    draft = dict(review.draft_json or {})
+    suggestions = [dict(suggestion) for suggestion in draft.get("suggestions", [])]
+    if index < 0 or index >= len(suggestions):
+        raise HTTPException(
+            404,
+            detail={"code": "review_suggestion_not_found", "message": "The review suggestion was not found."},
+        )
+    items = list(review.source_items)
+    previous_rendered = _render_markdown(draft, items)
+    suggestion = suggestions[index]
+    suggestion.setdefault("status", "pending")
+    if payload.text is not None:
+        suggestion["text"] = payload.text
+    if payload.status is not None:
+        suggestion["status"] = payload.status
+    suggestions[index] = suggestion
+    draft["suggestions"] = suggestions
+    review.draft_json = draft
+    if review.final_text == previous_rendered:
+        review.final_text = _render_markdown(draft, items)
     session.commit()
     session.refresh(review)
     return _response(review)
