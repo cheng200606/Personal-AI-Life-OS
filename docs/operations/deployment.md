@@ -45,6 +45,14 @@ The task runs `uv run --project <repo> lifeos sync <path> --yes`, appends output
 
 Set the weekday and local time in the Weekly review page. Scheduled generation runs inside the API worker, so `PROCESSING_MODE=worker` is required; the bare-API development default (`inline`) saves the schedule but does not generate reviews. The Compose development and production stacks use worker mode. Scheduled reviews use only active sources, skip periods with no items, and use the cited template when external consent, provider, or budget is unavailable. Due and overdue reminders are highlighted in the sidebar and in a "Due now" panel.
 
+### Obsidian Vault and installable mobile capture
+
+The production Web build registers `/sw.js`; the Vite development server intentionally does not, so test installation, sharing, and offline shell behavior against `npm run build` plus a production preview or the Compose Web container. Service workers and File System Access API require a secure context: HTTPS or `http://127.0.0.1`/`localhost`. Nginx serves the manifest as `application/manifest+json` and marks the manifest/service worker `no-cache`; keep those headers when replacing the Web server.
+
+For Vault export, use a Chromium browser with File System Access API, choose the Obsidian Vault directory only when prompted, and leave the conflict policy on **保留现有（默认）** unless a copy or explicit overwrite is intended. Same-origin exports are serialized, but an external editor can still race the browser's existence check; close an open note before re-export. The browser receives the directory handle; the API and database never store the Vault path. Safari, Firefox, denied permission, and unsupported environments use a normal Markdown download.
+
+Install the PWA from the browser menu on the mobile device. The launcher adds **快速捕获** at `/capture`, and the OS share sheet can send text/title/URL to the same quick-note flow. Shared content stays in the browser inbox for at most 15 minutes and is deleted when read or when the user logs out. Capture still requires the API and a valid login; there is no offline queue. Browser notification permission is optional and requested only after the user clicks **启用浏览器通知**; the sidebar badge and Due now panel work without it. No background push subscription or third-party push service is configured.
+
 ## Synthetic acceptance in Codespaces
 
 The [Dev Container configuration](../../.devcontainer/devcontainer.json) starts the development Compose stack as `lifeos-iteration`. Keep port 5173 private in the Ports panel. The Web client sends API requests through the same forwarded origin. API and PostgreSQL ports stay available to the Codespace terminal on loopback. [GitHub port forwarding](https://docs.github.com/en/codespaces/developing-in-a-codespace/forwarding-ports-in-your-codespace)
@@ -104,6 +112,32 @@ Record the operator handoff before starting hosted acceptance. Use the release r
 6. Confirm Caddy obtained a certificate; registration is invitation-only by default; `/api/v1/metrics` rejects requests without the metrics token; API and database ports are not publicly exposed; and the bucket rejects anonymous access.
 7. Complete the [release checklist](release-checklist.md) and [backup/restore exercise](backup-restore.md) before using real data.
 
+## Search index requirements
+
+SQLite creates and synchronizes local FTS5 trigram candidate tables. PostgreSQL migration `f9a1c4d8e702` attempts to install `pg_trgm` and create five GIN indexes; if the extension is unavailable or cannot be installed, search uses the existing `LIKE` path. Candidate results are always rechecked against authoritative owner/deletion/current-version filters.
+
+Rebuild SQLite candidates after a manual data repair with:
+
+```sh
+uv run python scripts/rebuild_search_index.py
+```
+
+PostgreSQL GIN indexes are maintained by PostgreSQL and do not require a content rebuild.
+
+## Model provider configuration
+
+The built-in provider uses `MODEL_PROVIDER=openai`, `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `OPENAI_MODEL`, and current token prices. Named providers are configured through `MODEL_PROVIDERS` JSON; each entry supports `base_url`, `api_key`, `model`, `models`, prices, disclosure version/text, privacy URL, output-token limit, and `local`/`trust_env`. Keys remain in environment or local configuration and must not be committed.
+
+Set `MODEL_TRUST_ENV=true` only when external calls must honor `HTTP(S)_PROXY`/`NO_PROXY`; the default is direct networking. Local providers must use a loopback URL. Consent is granted separately for each provider in Settings, and worker jobs re-resolve provider/model configuration before calling.
+
+Run the fixed semantic evaluation with configured providers:
+
+```sh
+uv run python scripts/evaluate_review_models.py --providers default
+```
+
+For a deterministic local comparison provider, run `uv run python scripts/serve_review_eval_provider.py` in a separate terminal and add a loopback entry to `MODEL_PROVIDERS`.
+
 ## Bucket requirements
 
 The application uses private object keys and server-side `AES256` encryption for writes. Give the API only the permissions needed to get/put/delete objects, list a bucket and object versions, and remove object versions. Configure the bucket with public access blocked. If versioning is enabled, test that source deletion removes every version and delete marker for that source.
@@ -114,6 +148,6 @@ Keep the journal's `.deletion-tombstones/` prefix available for every restorable
 
 Application rollback is safe only when the previous image can read the current schema. Take a database and object snapshot before migrations. Do not roll back a schema migration by restoring an older database without also restoring the matching object snapshot and replaying deletion tombstones. The API runs Alembic migrations before serving traffic and replays deletion tombstones during startup.
 
-The v0.5 graph and Q&A work adds revisions `d2f5a8c14e73` (graph tables), `f4a9d7b36c21` (source cloud consent), `b8e2c4d6f901` (question threads and ontology versions), and `d7f1a3b5c902` (insights, agent actions, and plugins). Each revision has a downgrade path; downgrading drops only the tables or columns introduced by that revision and does not restore deleted user data. Prefer forward fixes or a snapshot restore over downgrading in place, and verify `uv run alembic check` reports no model drift before deploying.
+The v0.5 graph and Q&A work adds revisions `d2f5a8c14e73` (graph tables), `f4a9d7b36c21` (source cloud consent), `b8e2c4d6f901` (question threads and ontology versions), and `d7f1a3b5c902` (insights, agent actions, and plugins). M7 adds `e8c4f2a7b913` (calendar reconciliation counters); M8 adds `f9a1c4d8e702` (search indexes, saved searches, tags, and collections); M9 adds `a1b7c9d3e504` (per-provider consent and review versions). Each revision has a downgrade path; downgrading drops only the tables, columns, or indexes introduced by that revision and does not restore deleted user data. Prefer forward fixes or a snapshot restore over downgrading in place, and verify `uv run alembic check` reports no model drift before deploying.
 
 This template does not configure cloud IAM, bucket lifecycle, managed PostgreSQL, DNS, alert delivery, or a CI image registry. Those remain operator work and require evidence in the release record.

@@ -18,6 +18,7 @@ from personal_ai_life_os.models import (
     SyncRun,
     User,
 )
+from personal_ai_life_os.services.graph_evidence import mark_item_evidence_unavailable
 from personal_ai_life_os.services.jobs import cancel_all_jobs_for_owner
 from personal_ai_life_os.storage import ObjectStore
 
@@ -32,7 +33,48 @@ def _read_tombstone(store: ObjectStore, *, source_id: str | None = None, owner_i
             continue
         if source_id and document.get("source_id") == source_id:
             return document
-        if owner_id and not document.get("source_id") and document.get("owner_id") == owner_id:
+        if owner_id and not document.get("source_id") and not document.get("item_ids") and document.get("owner_id") == owner_id:
+            return document
+    return None
+
+
+def request_item_deletions(
+    store: ObjectStore,
+    owner_id: str,
+    item_ids: set[str],
+    *,
+    tombstone_id: str | None = None,
+) -> dict:
+    if not item_ids:
+        raise ValueError("At least one item ID is required.")
+    normalized_ids = sorted({str(UUID(item_id)) for item_id in item_ids})
+    key_id = str(UUID(tombstone_id or normalized_ids[0]))
+    document = {
+        "owner_id": owner_id,
+        "tombstone_id": key_id,
+        "item_ids": normalized_ids,
+        "requested_at": datetime.now(UTC).isoformat(),
+    }
+    store.write_item_deletion_tombstone(owner_id, key_id, json.dumps(document).encode("utf-8"))
+    return document
+
+
+def complete_item_deletion(store: ObjectStore, owner_id: str, document: dict) -> None:
+    completed = {**document, "completed_at": datetime.now(UTC).isoformat()}
+    store.write_item_deletion_tombstone(
+        owner_id,
+        document["tombstone_id"],
+        json.dumps(completed).encode("utf-8"),
+    )
+
+
+def pending_item_deletion(store: ObjectStore, tombstone_id: str) -> dict | None:
+    for _, payload in store.list_deletion_tombstones():
+        try:
+            document = json.loads(payload)
+        except (json.JSONDecodeError, TypeError):
+            continue
+        if document.get("tombstone_id") == tombstone_id and document.get("item_ids"):
             return document
     return None
 
@@ -58,18 +100,23 @@ def complete_account_deletion(store: ObjectStore, owner_id: str, document: dict)
     store.write_deletion_tombstone(owner_id, json.dumps(completed).encode("utf-8"))
 
 
-def scrub_source_derivatives(session: Session, owner_id: str, source_id: str) -> list[SourceItem]:
+def scrub_item_derivatives(
+    session: Session,
+    owner_id: str,
+    item_ids: set[str],
+    *,
+    commit: bool = True,
+) -> list[SourceItem]:
     items = list(
         session.scalars(
             select(SourceItem).where(
-                SourceItem.source_id == source_id,
+                SourceItem.id.in_(item_ids),
                 SourceItem.owner_id == owner_id,
             )
         )
     )
-    item_ids = {item.id for item in items}
-    if not item_ids:
-        return items
+    if not items:
+        return []
 
     reviews = list(
         session.scalars(
@@ -123,8 +170,21 @@ def scrub_source_derivatives(session: Session, owner_id: str, source_id: str) ->
         reminder.notes = None
         reminder.status = "cancelled"
         reminder.source_items = [item for item in reminder.source_items if item.id not in item_ids]
-    session.commit()
+    if commit:
+        session.commit()
     return items
+
+
+def scrub_source_derivatives(session: Session, owner_id: str, source_id: str) -> list[SourceItem]:
+    item_ids = set(
+        session.scalars(
+            select(SourceItem.id).where(
+                SourceItem.source_id == source_id,
+                SourceItem.owner_id == owner_id,
+            )
+        )
+    )
+    return scrub_item_derivatives(session, owner_id, item_ids)
 
 
 def replay_deletion_tombstones(session_factory: sessionmaker, store: ObjectStore) -> int:
@@ -135,12 +195,44 @@ def replay_deletion_tombstones(session_factory: sessionmaker, store: ObjectStore
             document = json.loads(payload)
             owner_id = str(UUID(document["owner_id"]))
             source_id = str(UUID(document["source_id"])) if document.get("source_id") else None
+            raw_item_ids = document.get("item_ids")
+            is_item_document = "item_ids" in document or "tombstone_id" in document
+            if is_item_document:
+                if source_id or not isinstance(raw_item_ids, list) or not raw_item_ids:
+                    raise ValueError("An item deletion tombstone must contain only a non-empty item_ids list.")
+                UUID(document["tombstone_id"])
+                item_ids = {str(UUID(item_id)) for item_id in raw_item_ids}
+            else:
+                item_ids = set()
         except (ValueError, KeyError, TypeError, json.JSONDecodeError) as error:
             raise RuntimeError("A data deletion tombstone is malformed; startup is blocked.") from error
 
         with session_factory() as session:
             user = session.scalar(select(User).where(User.id == owner_id))
-            if source_id:
+            if item_ids:
+                if user is not None:
+                    items = list(
+                        session.scalars(
+                            select(SourceItem).where(
+                                SourceItem.owner_id == owner_id,
+                                SourceItem.id.in_(item_ids),
+                            )
+                        )
+                    )
+                    for item in items:
+                        item.is_current = False
+                        item.deleted_at = item.deleted_at or datetime.now(UTC)
+                    scrub_item_derivatives(session, owner_id, item_ids, commit=False)
+                    mark_item_evidence_unavailable(
+                        session,
+                        owner_id=owner_id,
+                        item_ids=item_ids,
+                        availability="deleted",
+                    )
+                    session.commit()
+                if not document.get("completed_at"):
+                    complete_item_deletion(store, owner_id, document)
+            elif source_id:
                 if user is not None:
                     source = session.scalar(
                         select(SourceConnection).where(

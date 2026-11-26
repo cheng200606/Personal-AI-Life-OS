@@ -1,7 +1,6 @@
 """Account registration, login, and explicit model consent."""
 
 import hmac
-from datetime import UTC, datetime
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import APIRouter, HTTPException, Request, status
@@ -19,6 +18,12 @@ from personal_ai_life_os.config import Settings
 from personal_ai_life_os.models import User
 from personal_ai_life_os.security import create_access_token, hash_password, verify_password
 from personal_ai_life_os.services.jobs import cancel_model_jobs_for_owner
+from personal_ai_life_os.services.model_consent import set_consent
+from personal_ai_life_os.services.model_providers import (
+    DEFAULT_PROVIDER_ID,
+    ModelProviderError,
+    resolve_model_provider,
+)
 from personal_ai_life_os.services.model_usage import model_rates_configured
 
 router = APIRouter(prefix="/auth", tags=["authentication"])
@@ -131,31 +136,26 @@ def set_ai_consent(
     session: SessionDep,
 ) -> User:
     config: Settings = request.app.state.settings
-    if payload.enabled:
-        if config.model_provider == "none" or not config.openai_api_key or not model_rates_configured(config):
-            raise HTTPException(
-                status_code=409,
-                detail={
-                    "code": "model_provider_unavailable",
-                    "message": "The external model provider, privacy disclosure, and current pricing must be configured. Template reviews remain available.",
-                },
-            )
-        if payload.disclosure_version != config.model_disclosure_version:
-            raise HTTPException(
-                status_code=409,
-                detail={
-                    "code": "disclosure_outdated",
-                    "message": "Review the current model data disclosure before enabling external processing.",
-                },
-            )
-        user.ai_consent_at = datetime.now(UTC)
-        user.ai_consent_provider = config.model_provider
-        user.ai_consent_disclosure_version = config.model_disclosure_version
-    else:
-        user.ai_consent_at = None
-        user.ai_consent_provider = None
-        user.ai_consent_disclosure_version = None
-        cancel_model_jobs_for_owner(session, user.id)
-    session.commit()
+    try:
+        provider = resolve_model_provider(config, payload.provider_id or DEFAULT_PROVIDER_ID)
+        set_consent(
+            session,
+            user,
+            provider,
+            enabled=payload.enabled,
+            disclosure_version=payload.disclosure_version,
+        )
+    except ModelProviderError as error:
+        raise HTTPException(
+            status_code=error.status_code,
+            detail={"code": error.code, "message": error.message},
+        ) from error
+    if not payload.enabled:
+        cancel_model_jobs_for_owner(
+            session,
+            user.id,
+            provider_id=payload.provider_id or DEFAULT_PROVIDER_ID,
+        )
+        session.commit()
     session.refresh(user)
     return user

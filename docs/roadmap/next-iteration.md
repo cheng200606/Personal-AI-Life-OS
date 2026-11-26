@@ -101,6 +101,8 @@
 - 2026-11-25 v0.5 Task 6–10：新增四条规则洞察与忽略记录、Agent 行动与 24 小时撤销/四条红线、连接器与 Agent 插件清单及参考插件、预算 API 与设置页；导航改为中文优先并新增图谱、待审、项目与目标、设置；新增 30 条合成问答评测脚本。迁移 `d7f1a3b5c902` 增加洞察、Agent 与插件表。
 - 2026-11-25 Task 6–10 验收：Ruff 通过；`uv run pytest -q` 108 项通过；Alembic 空 SQLite 升级到 `d7f1a3b5c902`、降级再升级通过且 `alembic check` 无漂移；`uv run python scripts/evaluate_graph_qa.py` 30 例引用正确率 1.0、无据断言 0、P95 约 20–30 毫秒、待审 0；Web lint 0 警告、生产构建与 5 项 Playwright 通过。
 
+- 2026-11-26 M7 连接器与快速捕获：新增 ICS 完整快照解析、UID/SEQUENCE 对账、取消/缺失事件软撤销、来源复用与条目级删除台账；新增 `SourceItem(kind=quick_note)` 快速笔记 CRUD、时间线/搜索/复盘/导出/归档接入；Web 增加日历预览、更新现有来源、Add note 与笔记编辑删除。Ruff 与 117 项 Python 测试通过，Web lint/生产构建与 7 项 Playwright 通过；迁移 `e8c4f2a7b913` 空库升级、降级再升级与 `alembic check` 通过。测试环境显式提高注册限流，生产默认仍为每小时 5 次。
+
 ## 6. v0.5 Task 4–5 证据治理与个人问答（已完成）
 
 - **待审。** 低置信度实体/关系进入 `graph_review_items`；API 支持列表、编辑、单条/批量批准与拒绝，批准后进入图谱与问答，拒绝后隐藏；时间线在刷新后显示待审数量入口。
@@ -133,3 +135,43 @@
 - **中文界面。** 导航为时间线、提问、图谱、待审、项目与目标、复盘、搜索、设置；新增项目与目标页、独立待审页、设置页预算与插件区，图谱/问答/项目页展示规则洞察，证据可跳回时间线。窄屏布局沿用现有响应式规则。
 - **评测与预算。** `scripts/evaluate_graph_qa.py` 覆盖 30 条中英文问题与撤回/删除证据；`GET /api/v1/budget` 与设置页展示月度花费、剩余额度、80% 提醒与分类用量；重复抽取复用已完成运行，不重复计费。
 - **边界。** 抽取仍由 API 手动触发；问答为关键词与规则检索；插件只做权限声明与审计，不做强沙箱；仍未实现多设备同步、手机、桌面安装包、扫描件 OCR 与模型撰写答案。
+
+## 10. M7 连接器与快速捕获（已完成）
+
+- **契约。** ICS 每次成功上传视为完整快照；UID 稳定标识事件，SEQUENCE 阻止旧版回退；取消和缺失事件软撤销并写入条目级删除台账。快速笔记使用 `SourceItem(kind=quick_note)`，内部来源隐藏，删除仅影响当前笔记。
+- **ICS。** 支持 UTC/IANA/全天/浮空时间、地点、描述与来源定位；5 MB/1,000 VEVENT 上限；RRULE/RDATE/EXDATE/RECURRENCE-ID 明确跳过；不抓取 URL/附件或读取服务器路径。
+- **快速笔记。** `POST /quick-notes`、`PATCH /quick-notes/{id}`、`DELETE /quick-notes/{id}`；支持标题、正文、时区时间、时间线、统一搜索、日期复盘、Markdown 导出、归档和单条删除。
+- **删除与恢复。** 条目级 tombstone 写入独立对象存储台账，启动回放阻止数据库恢复复活；相关复盘、记忆记录和提醒引用被清理。
+- **界面。** ICS 本地预览数量与重复规则提示，可选择更新现有日历；Add note 与时间线内编辑、导出、删除。
+- **验收。** Ruff、117 项 Python 测试、Web lint/构建、7 项 Playwright 全部通过。新增测试覆盖时区/DST、快照更新、低序号、取消/缺失、重复规则、无效快照不改动、删除回放、笔记 CRUD/搜索/导出/所有者隔离。
+- **边界。** 未做重复日程展开、CalDAV/邮件/IM、语义检索、PWA、桌面 D0 或托管多用户；自动化证据来自本地 SQLite 与合成数据。
+
+## 12. M9 复盘智能与模型选择（已完成）
+
+- **提供方注册表。** 默认 OpenAI 兼容配置与 `MODEL_PROVIDERS` 命名提供方并存，支持模型列表、价格、披露、本地 loopback 和可选代理环境；密钥不进入数据库、API、归档或日志。
+- **独立同意。** `ModelConsent` 按 owner/provider/disclosure 隔离；切换提供方需重新同意，撤回只取消对应 provider 的未完成任务。
+- **模型路由。** 手动与计划复盘保存 provider/model；worker 调用前重解析并校验同意、凭据、价格、单次与月度预算。
+- **复盘洞察。** 本地生成跨周期趋势、承诺/到期日、目标关联，全部保留来源引用；新增 `ReviewVersion` 快照与只读版本对比。
+- **证据接地。** 模型事实在进入草稿前按引用文本过滤；建议保持引用并作为推断处理。
+- **成本与归档。** 日/周/月、提供方/用途、token、延迟、失败预留面板；归档新增模型同意和复盘版本。
+- **语义评测。** MiniMax 与本地基线各 30 例：引用定位 1.0、事实支持 1.0、无据断言 0；MiniMax P95 6484 ms、估算成本 $0.00583950。报告见 `docs/operations/review-model-evaluation.json`。
+- **验收。** Ruff、126 项 Python 测试、Web lint/构建、10 项 Playwright 全部通过；SQLite 与 PostgreSQL 16 迁移升级、降级/再升级和 `alembic check` 通过。
+
+## 11. M8 检索质量与知识组织（已完成）
+
+- **索引。** SQLite FTS5 trigram 虚拟表与触发器、PostgreSQL `pg_trgm` GIN 条件迁移、`LIKE` 回退和 `scripts/rebuild_search_index.py`。
+- **筛选与保存检索。** 统一搜索支持类型、日期、来源、状态、标签、集合筛选；保存检索按所有者隔离并支持 CRUD。
+- **标签与集合。** 所有者隔离、casefold 唯一名称、条目关联替换、创建/编辑/删除、搜索筛选、Markdown 与归档导出。
+- **界面。** 搜索页增加筛选与保存检索；新增整理页管理标签/集合和条目标记。
+- **评测。** 31 条中英文查询对比索引与 LIKE：hit@5 均为 1.0；SQLite FTS5 P95 93.85 ms，PostgreSQL 16 `pg_trgm` P95 62.55 ms；删除一致性均通过。
+- **验收。** Ruff、121 项 Python 测试、Web lint/构建、9 项 Playwright 全部通过；SQLite 与 PostgreSQL 16 迁移升级、降级/再升级和 `alembic check` 通过，PostgreSQL 五个 GIN 索引实际创建成功。
+
+## 13. M10 Obsidian 与移动捕获（已完成）
+
+- **Vault 契约。** 统一发布 `lifeos_id`、标题、类型、来源、时间、标签、集合与导出时间；条目保留来源定位，复盘保留周期、状态与版本。文件名清理路径分隔符与控制字符。
+- **显式写入。** Web 使用 File System Access API 由用户选择目录；默认 keep，copy 递增后缀，overwrite 必须明确选择。取消授权不写入，不支持或拒绝时回退下载。
+- **PWA。** 生产构建注册 Service Worker，提供 manifest、安装图标、离线静态壳、`/capture` 快捷方式与文本/标题/URL 分享目标；API、令牌和模型输出不缓存。
+- **移动与通知。** 390×844 视口完成分享预填、保存、最近记录与时间线查看；导航保留可访问名称。通知需用户点击授权，应用打开时按到期集合去重，拒绝或失败不影响 Due now。
+- **Obsidian 验收。** Obsidian 1.15.1 打开导出的 `m10-export.md`，`tags=工作` 与 `collections=M10 验收` 渲染为属性，正文正常；模拟手动编辑后确认磁盘保留。
+- **自动化。** Ruff 与 126 项 Python 测试通过；Web lint/构建与全部 18 项 Edge Playwright 通过。`web/e2e/m10.spec.ts` 8 项专项测试覆盖 frontmatter、文件名、三种冲突策略、手动修改保留、权限回退、移动捕获、真实 Service Worker 分享/收件箱清理、无 API 缓存与通知拒绝。生产 preview 另验证 390×844 离线 `/capture` 重载：Service Worker 受控、2 个 JS/CSS 资产预缓存、无 API 缓存、控制台错误 0。
+- **边界。** 无双向同步、服务端 Vault 路径、离线写入队列、后台推送、原生移动包或文件/媒体分享；安装与分享需 HTTPS 或 localhost 安全上下文及生产 Web 构建。

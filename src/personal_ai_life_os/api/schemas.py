@@ -3,6 +3,7 @@
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Any, Literal
+from uuid import UUID
 from zoneinfo import ZoneInfo
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -59,7 +60,7 @@ class TokenResponse(BaseModel):
 
 
 class SourceCreateRequest(BaseModel):
-    kind: Literal["memory_markdown", "chatgpt_export", "chat_export", "document", "photo"]
+    kind: Literal["memory_markdown", "chatgpt_export", "chat_export", "document", "photo", "calendar_ics"]
     name: str = Field(min_length=1, max_length=240)
     selected_scope: dict[str, Any] = Field(default_factory=dict)
     consent_version: str = Field(default="source-consent-v1", min_length=1, max_length=80)
@@ -128,7 +129,10 @@ class SyncRunResponse(BaseModel):
     parser_version: str | None
     items_seen: int
     items_created: int
+    items_updated: int
     items_duplicate: int
+    items_removed: int
+    items_skipped: int
     items_failed: int
     error_code: str | None
     created_at: datetime
@@ -178,6 +182,8 @@ class ReviewGenerateRequest(BaseModel):
     period_start: date
     period_end: date
     use_external_model: bool = False
+    provider_id: str | None = Field(default=None, max_length=80)
+    model: str | None = Field(default=None, max_length=160)
 
     @model_validator(mode="after")
     def validate_period(self) -> "ReviewGenerateRequest":
@@ -213,6 +219,16 @@ class ReviewSuggestionUpdateRequest(BaseModel):
         return self
 
 
+class ReviewVersionResponse(BaseModel):
+    id: str
+    version_number: int
+    status: str
+    draft: dict[str, Any]
+    final_text: str | None
+    reason: str
+    created_at: datetime
+
+
 class ReviewResponse(BaseModel):
     id: str
     period_start: datetime
@@ -221,6 +237,8 @@ class ReviewResponse(BaseModel):
     draft: dict[str, Any]
     final_text: str | None
     source_items: list[SourceItemResponse]
+    version_number: int = 1
+    insights: dict[str, Any] = Field(default_factory=dict)
     created_at: datetime
     updated_at: datetime
 
@@ -228,10 +246,121 @@ class ReviewResponse(BaseModel):
 class AIPreferenceRequest(BaseModel):
     enabled: bool
     disclosure_version: str | None = None
+    provider_id: str | None = Field(default=None, max_length=80)
+
+
+class ModelConsentRequest(BaseModel):
+    enabled: bool
+    provider_id: str = Field(min_length=1, max_length=80)
+    disclosure_version: str | None = Field(default=None, max_length=120)
+
+
+class ModelConsentResponse(BaseModel):
+    provider_id: str
+    disclosure_version: str | None
+    granted_at: datetime | None
+    revoked_at: datetime | None
 
 
 class PhotoDescriptionConfirmRequest(BaseModel):
     description: str = Field(min_length=1, max_length=10000)
+
+
+class QuickNoteCreateRequest(BaseModel):
+    title: str | None = Field(default=None, max_length=200)
+    content_text: str = Field(min_length=1, max_length=20000)
+    occurred_at: datetime | None = None
+    source_timezone: str | None = Field(default=None, min_length=1, max_length=64)
+
+    @field_validator("title")
+    @classmethod
+    def normalize_title(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized[:200] or None
+
+    @field_validator("content_text")
+    @classmethod
+    def normalize_content(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("Note content cannot be empty.")
+        return normalized
+
+    @field_validator("occurred_at")
+    @classmethod
+    def require_timezone(cls, value: datetime | None) -> datetime | None:
+        if value is not None and (value.tzinfo is None or value.utcoffset() is None):
+            raise ValueError("occurred_at must include a timezone offset.")
+        return value
+
+    @field_validator("source_timezone")
+    @classmethod
+    def validate_timezone(cls, value: str | None) -> str | None:
+        if value is not None:
+            try:
+                ZoneInfo(value)
+            except Exception as error:
+                raise ValueError("Enter a valid IANA timezone.") from error
+        return value
+
+
+class QuickNoteUpdateRequest(BaseModel):
+    title: str | None = Field(default=None, max_length=200)
+    content_text: str | None = Field(default=None, min_length=1, max_length=20000)
+    occurred_at: datetime | None = None
+    source_timezone: str | None = Field(default=None, min_length=1, max_length=64)
+    clear_occurred_at: bool = False
+    clear_source_timezone: bool = False
+
+    @field_validator("title")
+    @classmethod
+    def normalize_title(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized[:200] or None
+
+    @field_validator("content_text")
+    @classmethod
+    def normalize_content(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("Note content cannot be empty.")
+        return normalized
+
+    @field_validator("occurred_at")
+    @classmethod
+    def require_timezone(cls, value: datetime | None) -> datetime | None:
+        if value is not None and (value.tzinfo is None or value.utcoffset() is None):
+            raise ValueError("occurred_at must include a timezone offset.")
+        return value
+
+    @field_validator("source_timezone")
+    @classmethod
+    def validate_timezone(cls, value: str | None) -> str | None:
+        if value is not None:
+            try:
+                ZoneInfo(value)
+            except Exception as error:
+                raise ValueError("Enter a valid IANA timezone.") from error
+        return value
+
+    @model_validator(mode="after")
+    def require_change(self) -> "QuickNoteUpdateRequest":
+        if all(
+            value is None
+            for value in (self.title, self.content_text, self.occurred_at, self.source_timezone)
+        ) and not (self.clear_occurred_at or self.clear_source_timezone):
+            raise ValueError("Provide at least one note change.")
+        if self.clear_occurred_at and self.occurred_at is not None:
+            raise ValueError("Provide occurred_at or clear_occurred_at, not both.")
+        if self.clear_source_timezone and self.source_timezone is not None:
+            raise ValueError("Provide source_timezone or clear_source_timezone, not both.")
+        return self
 
 
 class ReminderCreateRequest(BaseModel):
@@ -270,6 +399,8 @@ class ReviewScheduleUpdateRequest(BaseModel):
     local_minute: int = Field(ge=0, le=59)
     timezone: str = Field(min_length=1, max_length=64)
     use_external_model: bool = False
+    provider_id: str | None = Field(default=None, max_length=80)
+    model: str | None = Field(default=None, max_length=160)
 
     @field_validator("timezone")
     @classmethod
@@ -288,6 +419,8 @@ class ReviewScheduleResponse(BaseModel):
     local_minute: int
     timezone: str
     use_external_model: bool
+    provider_id: str
+    model: str | None
     last_run_at: datetime | None
     next_run_at: datetime | None
     last_review_id: str | None
@@ -722,14 +855,250 @@ class BudgetPurposeResponse(BaseModel):
     runs: int
 
 
+class BudgetProviderResponse(BaseModel):
+    provider: str
+    cost_usd: Decimal
+    runs: int
+    input_tokens: int
+    output_tokens: int
+    avg_latency_ms: int
+
+
 class BudgetResponse(BaseModel):
     month: str
+    period: Literal["day", "week", "month"] = "month"
     spent_usd: Decimal
     limit_usd: Decimal
     remaining_usd: Decimal
     warning: bool
     over_budget: bool
+    runs: int = 0
+    input_tokens: int = 0
+    output_tokens: int = 0
+    avg_latency_ms: int = 0
+    failure_reserve_usd: Decimal = Decimal(0)
     by_purpose: list[BudgetPurposeResponse]
+    by_provider: list[BudgetProviderResponse] = Field(default_factory=list)
+
+
+class TagCreateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+    color: str | None = Field(default=None, pattern=r"^#[0-9A-Fa-f]{6}$")
+
+    @field_validator("name")
+    @classmethod
+    def normalize_name(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("Tag name cannot be empty.")
+        return normalized
+
+    @field_validator("color")
+    @classmethod
+    def normalize_color(cls, value: str | None) -> str | None:
+        return value.upper() if value else None
+
+
+class TagUpdateRequest(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=80)
+    color: str | None = Field(default=None, pattern=r"^#[0-9A-Fa-f]{6}$")
+    clear_color: bool = False
+
+    @field_validator("name")
+    @classmethod
+    def normalize_name(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("Tag name cannot be empty.")
+        return normalized
+
+    @field_validator("color")
+    @classmethod
+    def normalize_color(cls, value: str | None) -> str | None:
+        return value.upper() if value else None
+
+    @model_validator(mode="after")
+    def require_change(self) -> "TagUpdateRequest":
+        if self.name is None and self.color is None and not self.clear_color:
+            raise ValueError("Provide a tag name, color, or clear_color.")
+        if self.clear_color and self.color is not None:
+            raise ValueError("Provide color or clear_color, not both.")
+        return self
+
+
+class TagResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    name: str
+    color: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class CollectionCreateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    description: str | None = Field(default=None, max_length=1000)
+
+    @field_validator("name")
+    @classmethod
+    def normalize_name(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("Collection name cannot be empty.")
+        return normalized
+
+    @field_validator("description")
+    @classmethod
+    def normalize_description(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+
+class CollectionUpdateRequest(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=120)
+    description: str | None = Field(default=None, max_length=1000)
+    clear_description: bool = False
+
+    @field_validator("name")
+    @classmethod
+    def normalize_name(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("Collection name cannot be empty.")
+        return normalized
+
+    @field_validator("description")
+    @classmethod
+    def normalize_description(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+    @model_validator(mode="after")
+    def require_change(self) -> "CollectionUpdateRequest":
+        if self.name is None and self.description is None and not self.clear_description:
+            raise ValueError("Provide a collection name, description, or clear_description.")
+        if self.clear_description and self.description is not None:
+            raise ValueError("Provide description or clear_description, not both.")
+        return self
+
+
+class CollectionResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    name: str
+    description: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class ItemOrganizationUpdateRequest(BaseModel):
+    tag_ids: list[str] = Field(default_factory=list, max_length=100)
+    collection_ids: list[str] = Field(default_factory=list, max_length=50)
+
+    @field_validator("tag_ids", "collection_ids")
+    @classmethod
+    def validate_ids(cls, value: list[str]) -> list[str]:
+        return [str(UUID(item_id)) for item_id in value]
+
+    @model_validator(mode="after")
+    def unique_ids(self) -> "ItemOrganizationUpdateRequest":
+        if len(set(self.tag_ids)) != len(self.tag_ids) or len(set(self.collection_ids)) != len(self.collection_ids):
+            raise ValueError("Tag and collection IDs must be unique.")
+        return self
+
+
+class ItemOrganizationResponse(BaseModel):
+    item_id: str
+    tags: list[TagResponse]
+    collections: list[CollectionResponse]
+
+
+class SearchFilters(BaseModel):
+    types: list[Literal["timeline", "reviews", "reminders"]] = Field(
+        default_factory=lambda: ["timeline", "reviews", "reminders"], max_length=3
+    )
+    start: date | None = None
+    end: date | None = None
+    source_id: str | None = Field(default=None, max_length=64)
+    status: list[str] = Field(default_factory=list, max_length=20)
+    tag_id: str | None = Field(default=None, max_length=64)
+    collection_id: str | None = Field(default=None, max_length=64)
+
+    @field_validator("source_id", "tag_id", "collection_id")
+    @classmethod
+    def validate_uuid(cls, value: str | None) -> str | None:
+        return str(UUID(value)) if value is not None else None
+
+    @model_validator(mode="after")
+    def validate_filters(self) -> "SearchFilters":
+        if not self.types or len(set(self.types)) != len(self.types):
+            raise ValueError("Choose unique search result types.")
+        if self.start and self.end and self.end <= self.start:
+            raise ValueError("end must be after start.")
+        if len(set(self.status)) != len(self.status):
+            raise ValueError("Status filters must be unique.")
+        return self
+
+
+class SavedSearchCreateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    query: str = Field(min_length=1, max_length=200)
+    filters: SearchFilters = Field(default_factory=SearchFilters)
+
+    @field_validator("name")
+    @classmethod
+    def normalize_name(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("Saved search name cannot be empty.")
+        return normalized
+
+    @field_validator("query")
+    @classmethod
+    def normalize_query(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("Saved search query cannot be empty.")
+        return normalized
+
+
+class SavedSearchUpdateRequest(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=120)
+    filters: SearchFilters | None = None
+
+    @field_validator("name")
+    @classmethod
+    def normalize_name(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("Saved search name cannot be empty.")
+        return normalized
+
+    @model_validator(mode="after")
+    def require_change(self) -> "SavedSearchUpdateRequest":
+        if self.name is None and self.filters is None:
+            raise ValueError("Provide a saved search name or filters.")
+        return self
+
+
+class SavedSearchResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    name: str
+    query: str
+    filters: SearchFilters
+    created_at: datetime
+    updated_at: datetime
 
 
 class SearchTimelineResult(BaseModel):
@@ -776,6 +1145,7 @@ class SearchReminderGroup(BaseModel):
 
 class SearchResponse(BaseModel):
     query: str
+    index_backend: str = "like"
     timeline: SearchTimelineGroup
     reviews: SearchReviewGroup
     reminders: SearchReminderGroup

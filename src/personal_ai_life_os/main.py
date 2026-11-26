@@ -26,12 +26,16 @@ from personal_ai_life_os.api.routes.insights import router as insights_router
 from personal_ai_life_os.api.routes.items import router as items_router
 from personal_ai_life_os.api.routes.jobs import router as jobs_router
 from personal_ai_life_os.api.routes.metrics import router as metrics_router
+from personal_ai_life_os.api.routes.model_providers import router as model_providers_router
 from personal_ai_life_os.api.routes.ontology import router as ontology_router
+from personal_ai_life_os.api.routes.organization import router as organization_router
 from personal_ai_life_os.api.routes.plugins import router as plugins_router
 from personal_ai_life_os.api.routes.qa import router as qa_router
+from personal_ai_life_os.api.routes.quick_notes import router as quick_notes_router
 from personal_ai_life_os.api.routes.reminders import router as reminders_router
 from personal_ai_life_os.api.routes.review_schedule import router as review_schedule_router
 from personal_ai_life_os.api.routes.reviews import router as reviews_router
+from personal_ai_life_os.api.routes.saved_searches import router as saved_searches_router
 from personal_ai_life_os.api.routes.search import router as search_router
 from personal_ai_life_os.api.routes.sources import router as sources_router
 from personal_ai_life_os.config import Settings, settings
@@ -39,6 +43,10 @@ from personal_ai_life_os.db import Base, create_database_engine, create_session_
 from personal_ai_life_os.services.deletion import replay_deletion_tombstones
 from personal_ai_life_os.services.jobs import worker_loop
 from personal_ai_life_os.services.scheduling import schedule_loop
+from personal_ai_life_os.services.search_index import (
+    ensure_postgres_search_indexes,
+    ensure_sqlite_search_index,
+)
 from personal_ai_life_os.storage import ObjectStore, create_object_store
 
 logger = logging.getLogger("personal_ai_life_os")
@@ -58,6 +66,10 @@ def create_app(
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         if runtime_config.auto_create_schema:
             Base.metadata.create_all(bind=engine)
+        with session_factory() as session:
+            ensure_sqlite_search_index(session)
+            if runtime_config.auto_create_schema:
+                ensure_postgres_search_indexes(session)
         replay_deletion_tombstones(session_factory, store)
         stop_worker = threading.Event()
         scheduler_stop = threading.Event()
@@ -113,7 +125,7 @@ def create_app(
         if request.method == "POST" and route == "/api/v1/auth/login":
             key, limit, window = "login", 10, 300
         elif request.method == "POST" and route == "/api/v1/auth/register":
-            key, limit, window = "register", 5, 3600
+            key, limit, window = "register", application.state.settings.registration_rate_limit, 3600
         elif request.method == "POST" and route.startswith("/api/v1/sources/") and route.endswith("/imports"):
             key, limit, window = "import", 30, 60
         client_host = request.client.host if request.client else "unknown"
@@ -163,6 +175,7 @@ def create_app(
     application.include_router(health_router, prefix="/api/v1")
     application.include_router(auth_router, prefix="/api/v1")
     application.include_router(metrics_router, prefix="/api/v1")
+    application.include_router(model_providers_router, prefix="/api/v1")
     application.include_router(account_router, prefix="/api/v1")
     application.include_router(sources_router, prefix="/api/v1")
     application.include_router(imports_router, prefix="/api/v1")
@@ -172,8 +185,10 @@ def create_app(
     application.include_router(graph_review_router, prefix="/api/v1")
     application.include_router(graph_merge_router, prefix="/api/v1")
     application.include_router(ontology_router, prefix="/api/v1")
+    application.include_router(organization_router, prefix="/api/v1")
     application.include_router(extractions_router, prefix="/api/v1")
     application.include_router(qa_router, prefix="/api/v1")
+    application.include_router(quick_notes_router, prefix="/api/v1")
     application.include_router(insights_router, prefix="/api/v1")
     application.include_router(agent_router, prefix="/api/v1")
     application.include_router(plugins_router, prefix="/api/v1")
@@ -182,6 +197,7 @@ def create_app(
     application.include_router(review_schedule_router, prefix="/api/v1")
     application.include_router(reminders_router, prefix="/api/v1")
     application.include_router(search_router, prefix="/api/v1")
+    application.include_router(saved_searches_router, prefix="/api/v1")
 
     @application.exception_handler(HTTPException)
     async def http_error_handler(_: Request, error: HTTPException) -> JSONResponse:

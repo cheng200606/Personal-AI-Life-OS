@@ -1,24 +1,43 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import './App.css'
+import { buildItemMarkdown, buildReviewMarkdown } from './markdownExport'
+import { clearPendingSharedCapture, enableDueNotifications, normalizeSharedCapture, readPendingSharedCapture, sharedCaptureBody } from './pwa'
+import type { SharedCapture } from './pwa'
+import { exportToVault } from './vaultExport'
+import type { VaultConflictPolicy } from './vaultExport'
 
 type Source = { id: string; kind: string; name: string; status: string; selected_scope: Record<string, unknown>; last_sync_at: string | null; cloud_consent_at: string | null; cloud_consent_version: string | null }
-type Item = { id: string; source_id: string; kind: string; title: string; content_text: string; occurred_at: string | null; source_locator: Record<string, unknown>; metadata: Record<string, unknown> }
+type Item = { id: string; source_id: string; kind: string; title: string; content_text: string; occurred_at: string | null; source_timezone: string | null; source_locator: Record<string, unknown>; metadata: Record<string, unknown> }
+type SyncRunSummary = { items_created: number; items_updated: number; items_duplicate: number; items_removed: number; items_skipped: number }
+type CalendarPreview = { events: number; recurring: number }
 type Job = { id: string; kind: string; status: string; attempt_count: number; max_attempts: number; error_code: string | null; result_json: Record<string, unknown> | null }
 type ReviewSuggestion = { text: string; source_ids: string[]; status?: 'pending' | 'dismissed' }
 type ReviewModel = { job_id?: string; provider?: string; status?: string; model?: string | null; latency_ms?: number; estimated_cost_usd?: string }
-type Review = { id: string; period_start: string; period_end: string; status: string; final_text: string | null; draft: { suggestions?: ReviewSuggestion[]; model?: ReviewModel }; source_items: Item[] }
+type Review = { id: string; period_start: string; period_end: string; status: string; final_text: string | null; draft: { suggestions?: ReviewSuggestion[]; model?: ReviewModel; insights?: ReviewInsights }; source_items: Item[]; version_number: number; insights: ReviewInsights }
+type ReviewInsights = { trends: Array<{ topic: string; current_count: number; previous_count: number; direction: string; source_ids: string[] }>; commitments: Array<{ text: string; due_date: string | null; source_ids: string[] }>; goals: Array<{ entity_id: string; name: string; source_ids: string[]; confidence: number }> }
+type ReviewVersion = { id: string; version_number: number; status: string; draft: { suggestions?: ReviewSuggestion[]; model?: ReviewModel; insights?: ReviewInsights }; final_text: string | null; reason: string; created_at: string }
+type ModelProvider = { id: string; model: string; models: string[]; input_cost_per_million_usd: string; output_cost_per_million_usd: string; disclosure_version: string; data_sent: string; retention: string; privacy_url: string | null; max_cost_per_call_usd: string; local: boolean; builtin: boolean; available: boolean; consent: { provider_id: string; disclosure_version: string; consented: boolean; granted_at: string | null; revoked_at: string | null } }
 type Reminder = { id: string; title: string; notes: string | null; due_at: string | null; status: string }
-type ReviewSchedule = { enabled: boolean; weekday: number; local_hour: number; local_minute: number; timezone: string; use_external_model: boolean; last_run_at: string | null; next_run_at: string | null; last_review_id: string | null }
-type SchedulePayload = { enabled: boolean; weekday: number; local_hour: number; local_minute: number; timezone: string; use_external_model: boolean }
+type ReviewSchedule = { enabled: boolean; weekday: number; local_hour: number; local_minute: number; timezone: string; use_external_model: boolean; provider_id: string; model: string | null; last_run_at: string | null; next_run_at: string | null; last_review_id: string | null }
+type SchedulePayload = { enabled: boolean; weekday: number; local_hour: number; local_minute: number; timezone: string; use_external_model: boolean; provider_id: string; model: string | null }
 type User = { id: string; email: string; timezone: string; ai_consent_at: string | null }
 type Conversation = { id: string; title: string; created_at: number | null }
-type Page = 'timeline' | 'ask' | 'graph' | 'pending' | 'projects' | 'reviews' | 'search' | 'account'
+type Page = 'timeline' | 'ask' | 'graph' | 'pending' | 'projects' | 'reviews' | 'search' | 'organize' | 'account' | 'capture'
+const PAGE_PATHS: Record<Page, string> = { timeline: '/timeline', ask: '/ask', graph: '/graph', pending: '/pending', projects: '/projects', reviews: '/reviews', search: '/search', organize: '/organize', account: '/account', capture: '/capture' }
+function pageFromPath(pathname: string): Page {
+  return (Object.entries(PAGE_PATHS).find(([, path]) => path === pathname)?.[0] as Page | undefined) || 'timeline'
+}
 type SearchTimelineHit = { id: string; source_id: string; source_name: string; title: string; snippet: string; occurred_at: string | null; kind: string }
 type SearchReviewHit = { id: string; period_start: string; period_end: string; status: string; snippet: string; updated_at: string }
 type SearchReminderHit = { id: string; title: string; snippet: string; due_at: string | null; status: string }
 type SearchGroup<T> = { total: number; results: T[] }
-type SearchResults = { query: string; timeline: SearchGroup<SearchTimelineHit>; reviews: SearchGroup<SearchReviewHit>; reminders: SearchGroup<SearchReminderHit> }
+type SearchResults = { query: string; index_backend: string; timeline: SearchGroup<SearchTimelineHit>; reviews: SearchGroup<SearchReviewHit>; reminders: SearchGroup<SearchReminderHit> }
+type SearchFilters = { types: Array<'timeline' | 'reviews' | 'reminders'>; start: string | null; end: string | null; source_id: string | null; status: string[]; tag_id: string | null; collection_id: string | null }
+type SavedSearch = { id: string; name: string; query: string; filters: SearchFilters; created_at: string; updated_at: string }
+type Tag = { id: string; name: string; color: string | null; created_at: string; updated_at: string }
+type Collection = { id: string; name: string; description: string | null; created_at: string; updated_at: string }
+type ItemOrganization = { item_id: string; tags: Tag[]; collections: Collection[] }
 type Disclosure = { available: boolean; provider: string | null; model: string | null; disclosure_version: string | null; data_sent: string; retention: string; privacy_url: string | null; input_cost_per_million_usd: string | null; output_cost_per_million_usd: string | null; max_cost_per_call_usd: string | null }
 type GraphEvidence = { id: string; quote: string; confidence: number; availability: string; source_id: string; source_item_id: string; locator: Record<string, unknown> }
 type GraphEntity = { id: string; entity_type: string; name: string; summary: string | null; confidence: number; status: string; evidence: GraphEvidence[] }
@@ -33,7 +52,7 @@ type Plugin = { id: string; name: string; version: string; kind: string; descrip
 type PluginCatalogEntry = { name: string; version: string; kind: string; entrypoint: string; description: string; permissions: string[] }
 type PluginAudit = { id: string; plugin_id: string | null; action: string; status: string; detail: Record<string, unknown>; created_at: string }
 type AgentActionSummary = { id: string; kind: string; target_type: string; target_id: string | null; status: string; approval: string; error_code: string | null; expires_at: string; undo_available: boolean; created_at: string; undone_at: string | null; audit: Record<string, unknown> }
-type BudgetInfo = { month: string; spent_usd: string; limit_usd: string; remaining_usd: string; warning: boolean; over_budget: boolean; by_purpose: { purpose: string; cost_usd: string; runs: number }[] }
+type BudgetInfo = { month: string; period: 'day' | 'week' | 'month'; spent_usd: string; limit_usd: string; remaining_usd: string; warning: boolean; over_budget: boolean; runs: number; input_tokens: number; output_tokens: number; avg_latency_ms: number; failure_reserve_usd: string; by_purpose: { purpose: string; cost_usd: string; runs: number }[]; by_provider: { provider: string; cost_usd: string; runs: number; input_tokens: number; output_tokens: number; avg_latency_ms: number }[] }
 type QaScope = { source_ids: string[]; entity_ids: string[]; start: string | null; end: string | null }
 type QaCitation = { evidence_id: string; quote: string; confidence: number; availability: string; source_id: string; source_name: string; source_item_id: string; item_title: string; occurred_at: string | null; locator: Record<string, unknown> }
 type QaFact = { label: string; detail: string; basis: 'fact' | 'inference' | 'uncertain'; confidence: number; entity_id: string | null; relation_id: string | null; citation_ids: string[] }
@@ -69,6 +88,17 @@ async function waitForJob(jobId: string, token: string): Promise<Job> {
   throw new Error('后台任务仍在运行，请检查条目状态后重试。')
 }
 
+function previewCalendarText(text: string): CalendarPreview {
+  if (!/BEGIN:VCALENDAR/i.test(text) || !/BEGIN:VEVENT/i.test(text) || !/END:VCALENDAR/i.test(text)) {
+    throw new Error('请选择包含 VEVENT 的 iCalendar (.ics) 文件。')
+  }
+  const eventBlocks = text.match(/BEGIN:VEVENT[\s\S]*?END:VEVENT/gi) || []
+  const events = eventBlocks.length
+  if (events > 1000) throw new Error('日历每次最多导入 1,000 个日程。')
+  const recurring = eventBlocks.filter((block) => /^(RRULE|RDATE|EXDATE|RECURRENCE-ID)[;:]/im.test(block)).length
+  return { events, recurring }
+}
+
 function parseConversations(text: string): Conversation[] {
   const document = JSON.parse(text)
   const list = Array.isArray(document) ? document : document.conversations
@@ -96,6 +126,9 @@ function sourceScopeDescription(source: Source): string {
   if (source.kind === 'document') {
     return '已选文档 · Markdown/TXT/PDF/DOCX 文本、标题/页码/段落与来源定位'
   }
+  if (source.kind === 'calendar_ics') {
+    return '已选日历快照 · 单次日程/全天日程、UID、时区、地点与描述；重复规则暂不展开'
+  }
   return `已选 Markdown 文件 · UTF-8 章节文本、标题、日期与行定位（${source.name}）`
 }
 
@@ -116,6 +149,9 @@ function selectedFileDisclosure(file: File, selectedConversationCount: number): 
   if (name.endsWith('.txt')) {
     return '完整的已选文本会上传，并作为一个带行定位的来源条目保存。'
   }
+  if (name.endsWith('.ics')) {
+    return '完整的已选日历快照会在本地解析。更新现有来源时，取消或消失的日程会退出时间线；重复规则会明确跳过。'
+  }
   return '完整的已选 UTF-8 Markdown 文件会上传，并按标题章节拆分，保留日期与行定位；不会读取其他文件。'
 }
 
@@ -123,7 +159,8 @@ function App() {
   const [token, setToken] = useState(() => sessionStorage.getItem('lifeos-token') || '')
   const [user, setUser] = useState<User | null>(null)
   const [disclosure, setDisclosure] = useState<Disclosure | null>(null)
-  const [page, setPage] = useState<Page>('timeline')
+  const [page, setPageState] = useState<Page>(() => pageFromPath(window.location.pathname))
+  const [vaultPolicy, setVaultPolicy] = useState<VaultConflictPolicy>('keep')
   const [sources, setSources] = useState<Source[]>([])
   const [items, setItems] = useState<Item[]>([])
   const [timelineTotal, setTimelineTotal] = useState(0)
@@ -139,6 +176,18 @@ function App() {
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<SearchResults | null>(null)
   const [searchLoading, setSearchLoading] = useState(false)
+  const [searchTypes, setSearchTypes] = useState<Array<'timeline' | 'reviews' | 'reminders'>>(['timeline', 'reviews', 'reminders'])
+  const [searchStart, setSearchStart] = useState('')
+  const [searchEnd, setSearchEnd] = useState('')
+  const [searchSourceId, setSearchSourceId] = useState('')
+  const [searchStatus, setSearchStatus] = useState('')
+  const [searchTagId, setSearchTagId] = useState('')
+  const [searchCollectionId, setSearchCollectionId] = useState('')
+  const [savedSearches, setSavedSearches] = useState<SavedSearch[]>([])
+  const [savedSearchName, setSavedSearchName] = useState('')
+  const [tags, setTags] = useState<Tag[]>([])
+  const [collections, setCollections] = useState<Collection[]>([])
+  const [organizingItemId, setOrganizingItemId] = useState('')
   const [pendingReviewTotal, setPendingReviewTotal] = useState(0)
   const [agentActiveTotal, setAgentActiveTotal] = useState(0)
   const [extractSelected, setExtractSelected] = useState<string[]>([])
@@ -152,13 +201,32 @@ function App() {
   const [selected, setSelected] = useState<string[]>([])
   const [photoDate, setPhotoDate] = useState('')
   const [photoPreview, setPhotoPreview] = useState('')
+  const [calendarPreview, setCalendarPreview] = useState<CalendarPreview | null>(null)
+  const [calendarSourceId, setCalendarSourceId] = useState('')
+  const [editingNoteId, setEditingNoteId] = useState('')
   const [photoDescriptions, setPhotoDescriptions] = useState<Record<string, string>>({})
   const directoryInput = useRef<HTMLInputElement>(null)
   const backgroundPolls = useRef(new Set<string>())
+  const notifiedReminderKey = useRef('')
   const [consentAcknowledged, setConsentAcknowledged] = useState(false)
   const [externalModel, setExternalModel] = useState(false)
+  const [providers, setProviders] = useState<ModelProvider[]>([])
+  const [reviewProviderId, setReviewProviderId] = useState('')
+  const [reviewModel, setReviewModel] = useState('')
   const [loginMode, setLoginMode] = useState<'login' | 'register'>('login')
   const activeToken = useRef(token)
+
+  function setPage(next: Page) {
+    setPageState(next)
+    const path = PAGE_PATHS[next]
+    if (window.location.pathname !== path) window.history.pushState({}, '', path)
+  }
+
+  useEffect(() => {
+    const onPopState = () => setPageState(pageFromPath(window.location.pathname))
+    window.addEventListener('popstate', onPopState)
+    return () => window.removeEventListener('popstate', onPopState)
+  }, [])
 
   const refresh = useCallback(async () => {
     if (!token) return
@@ -168,14 +236,17 @@ function App() {
       if (dateStart) params.set('start', dateStart)
       if (dateEnd) params.set('end', dateEnd)
       if (sourceFilter) params.set('source_id', sourceFilter)
-      const [me, sourceList, timeline, reviewList, reminderList, modelDisclosure, reviewSchedule, reviewQueue, agentQueue] = await Promise.all([
+      const [me, sourceList, timeline, reviewList, reminderList, modelDisclosure, reviewSchedule, reviewQueue, agentQueue, tagList, collectionList, savedList, providerList] = await Promise.all([
         api<User>('/auth/me', token), api<Source[]>('/sources', token), api<{ items: Item[]; total: number; next_cursor: string | null }>('/timeline?' + params.toString(), token),
         api<Review[]>('/reviews', token), api<Reminder[]>('/reminders', token), fetch(API + '/auth/model-disclosure').then((response) => response.json() as Promise<Disclosure>),
         api<ReviewSchedule>('/review-schedule', token), api<{ total: number }>('/graph/review?status=pending&limit=1', token),
-        api<{ total: number }>('/agent/actions?status=active&limit=1', token),
+        api<{ total: number }>('/agent/actions?status=active&limit=1', token), api<Tag[]>('/tags', token),
+        api<Collection[]>('/collections', token), api<SavedSearch[]>('/saved-searches', token),
+        api<ModelProvider[]>('/model-providers', token),
       ])
       if (activeToken.current !== token) return
-      setUser(me); setSources(sourceList); setItems(timeline.items); setTimelineTotal(timeline.total); setTimelineCursor(timeline.next_cursor); setReviews(reviewList); setReminders(reminderList); setDisclosure(modelDisclosure); setSchedule(reviewSchedule); setPendingReviewTotal(reviewQueue.total); setAgentActiveTotal(agentQueue.total)
+      setUser(me); setSources(sourceList); setItems(timeline.items); setTimelineTotal(timeline.total); setTimelineCursor(timeline.next_cursor); setReviews(reviewList); setReminders(reminderList); setDisclosure(modelDisclosure); setSchedule(reviewSchedule); setPendingReviewTotal(reviewQueue.total); setAgentActiveTotal(agentQueue.total); setTags(tagList); setCollections(collectionList); setSavedSearches(savedList); setProviders(providerList)
+      setReviewProviderId((current) => providerList.some((provider) => provider.id === current) ? current : providerList[0]?.id || '')
     } catch (e) { if (activeToken.current === token) setError(e instanceof Error ? e.message : '无法加载工作区。') }
   }, [dateEnd, dateStart, query, sourceFilter, token])
 
@@ -184,6 +255,16 @@ function App() {
   useEffect(() => { void refresh() }, [refresh])
   useEffect(() => { activeToken.current = token }, [token])
   useEffect(() => { const timer = window.setInterval(() => setNow(Date.now()), 60000); return () => window.clearInterval(timer) }, [])
+  useEffect(() => {
+    if (!token || !('Notification' in window) || Notification.permission !== 'granted') return
+    const due = reminders.filter((reminder) => ['pending', 'snoozed'].includes(reminder.status) && reminder.due_at && new Date(reminder.due_at).getTime() <= now)
+    const key = due.map((reminder) => reminder.id).sort().join(',')
+    if (!key) { notifiedReminderKey.current = ''; return }
+    if (notifiedReminderKey.current === key) return
+    void enableDueNotifications(due.length, '/reviews').then((result) => {
+      if (result.status === 'enabled' || result.status === 'already-enabled') notifiedReminderKey.current = key
+    })
+  }, [now, reminders, token])
   useEffect(() => {
     if (!token || page !== 'reviews') return
     const load = () => Promise.all([
@@ -273,14 +354,14 @@ function App() {
   }
 
   async function previewFiles(fileList: FileList | null, fromDirectory = false) {
-    setFile(null); setPhotoFiles([]); setPhotoPreview('')
+    setFile(null); setPhotoFiles([]); setPhotoPreview(''); setCalendarPreview(null); setCalendarSourceId('')
     setConversations([]); setSelected([]); setError(''); setNotice('')
     const selectedFiles = Array.from(fileList || [])
     const imageFiles = selectedFiles.filter((selectedFile) => /\.(jpe?g|png|webp)$/i.test(selectedFile.name))
     const skipped = selectedFiles.length - imageFiles.length
     const nextFiles = fromDirectory ? imageFiles : selectedFiles
-    if (!fromDirectory && selectedFiles.length === 1 && imageFiles.length === 0 && !/\.(md|markdown|txt|pdf|docx|json|jsonl)$/i.test(selectedFiles[0].name)) {
-      setError('请选择 Markdown、TXT、PDF、DOCX 或聊天导出文件，或支持的 JPEG、PNG、WebP 照片。')
+    if (!fromDirectory && selectedFiles.length === 1 && imageFiles.length === 0 && !/\.(md|markdown|txt|pdf|docx|json|jsonl|ics)$/i.test(selectedFiles[0].name)) {
+      setError('请选择 Markdown、TXT、PDF、DOCX、ICS 日历或聊天导出文件，或支持的 JPEG、PNG、WebP 照片。')
       return
     }
     if (nextFiles.length > 10) { setError('每次最多选择 10 张照片。'); return }
@@ -292,6 +373,15 @@ function App() {
     setFile(next); setPhotoFiles(nextFiles.length && nextFiles.every((selectedFile) => /\.(jpe?g|png|webp)$/i.test(selectedFile.name)) ? nextFiles : [])
     setPhotoPreview(next && /\.(jpe?g|png|webp)$/i.test(next.name) ? URL.createObjectURL(next) : '')
     if (fromDirectory && skipped) setNotice(`${skipped} 个非照片文件已忽略。`)
+    if (nextFiles.length === 1 && next?.name.toLowerCase().endsWith('.ics')) {
+      try {
+        if (next.size > 5 * 1024 * 1024) throw new Error('日历文件不能超过 5 MB。')
+        setCalendarPreview(previewCalendarText(await next.text()))
+      } catch (e) {
+        setFile(null)
+        setError(e instanceof Error ? e.message : '无法预览此日历。')
+      }
+    }
     if (nextFiles.length === 1 && next?.name.toLowerCase().endsWith('.json')) {
       try {
         const text = await next.text()
@@ -309,7 +399,7 @@ function App() {
   async function importSelected(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); if (!file) return
     const lower = file.name.toLowerCase()
-    let kind = photoFiles.length ? 'photo' : lower.endsWith('.jsonl') ? 'chat_export' : lower.endsWith('.json') ? 'chatgpt_export' : 'document'
+    let kind = photoFiles.length ? 'photo' : lower.endsWith('.ics') ? 'calendar_ics' : lower.endsWith('.jsonl') ? 'chat_export' : lower.endsWith('.json') ? 'chatgpt_export' : 'document'
     if (kind === 'chatgpt_export') {
       try {
         const document = JSON.parse(await file.text())
@@ -319,14 +409,23 @@ function App() {
       } catch { setError('无法读取这个 JSON 文件。'); return }
     }
     if (kind === 'chatgpt_export' && selected.length === 0) { setError('请至少选择一个会话。'); return }
+    if (kind === 'calendar_ics' && !calendarPreview) { setError('请先选择有效的 ICS 日历文件。'); return }
     setBusy(true); setError(''); setNotice('')
     try {
-      const created = await api<Source>('/sources', token, { method: 'POST', body: JSON.stringify({ kind, name: kind === 'photo' ? `照片导入 · ${photoFiles.length} 张` : file.name, selected_scope: kind === 'chatgpt_export' ? { conversation_ids: selected } : kind === 'photo' ? { file_count: photoFiles.length } : {} }) })
+      let source: Source
+      if (kind === 'calendar_ics' && calendarSourceId) {
+        const existing = sources.find((entry) => entry.id === calendarSourceId && entry.kind === 'calendar_ics')
+        if (!existing) throw new Error('所选日历来源已不存在，请重新选择。')
+        source = existing
+      } else {
+        source = await api<Source>('/sources', token, { method: 'POST', body: JSON.stringify({ kind, name: kind === 'photo' ? `照片导入 · ${photoFiles.length} 张` : file.name, selected_scope: kind === 'chatgpt_export' ? { conversation_ids: selected } : kind === 'photo' ? { file_count: photoFiles.length } : {} }) })
+      }
       const uploads = kind === 'photo' ? photoFiles : [file]
       const jobIds: string[] = []
       const uploadErrors: string[] = []
       let createdItems = 0
       let duplicateItems = 0
+      let calendarRun: SyncRunSummary | null = null
       for (const selectedFile of uploads) {
         let upload = selectedFile
         if (kind === 'chatgpt_export') {
@@ -344,18 +443,21 @@ function App() {
           form.append('captured_timezone', Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC')
         }
         try {
-          const result = await api<{ sync_run: { items_created: number; items_duplicate: number }; job_ids: string[] }>('/sources/' + created.id + '/imports', token, { method: 'POST', body: form })
+          const result = await api<{ sync_run: SyncRunSummary; job_ids: string[] }>('/sources/' + source.id + '/imports', token, { method: 'POST', body: form })
           createdItems += result.sync_run.items_created
           duplicateItems += result.sync_run.items_duplicate
+          if (kind === 'calendar_ics') calendarRun = result.sync_run
           jobIds.push(...result.job_ids)
         } catch (reason) {
           if (kind !== 'photo') throw reason
           uploadErrors.push(selectedFile.name)
         }
       }
-      setNotice(jobIds.length ? `已上传 ${jobIds.length} 张照片，OCR 正在处理。` : `已导入 ${createdItems} 条新记录；${duplicateItems} 条未变化。`)
+      if (jobIds.length) setNotice(`已上传 ${jobIds.length} 张照片，OCR 正在处理。`)
+      else if (calendarRun) setNotice(`日历已对账：新增 ${calendarRun.items_created}，更新 ${calendarRun.items_updated}，未变化 ${calendarRun.items_duplicate}，撤销 ${calendarRun.items_removed}，跳过 ${calendarRun.items_skipped}。`)
+      else setNotice(`已导入 ${createdItems} 条新记录；${duplicateItems} 条未变化。`)
       if (uploadErrors.length) setError(`${uploadErrors.length} 张照片无法导入：${uploadErrors.join(', ')}`)
-      setFile(null); setPhotoFiles([]); setPhotoDate(''); setPhotoPreview(''); setSelected([]); setConversations([]); await refresh()
+      setFile(null); setPhotoFiles([]); setPhotoDate(''); setPhotoPreview(''); setCalendarPreview(null); setCalendarSourceId(''); setSelected([]); setConversations([]); await refresh()
     } catch (e) { setError(e instanceof Error ? e.message : '导入失败。') } finally { setBusy(false) }
   }
 
@@ -392,10 +494,24 @@ function App() {
   }
 
   async function exportItem(item: Item) {
-    const source = sources.find((entry) => entry.id === item.source_id)
-    const text = ['---', 'id: ' + item.id, 'source: ' + JSON.stringify(source?.name || 'Life OS'), 'occurred_at: ' + (item.occurred_at || 'unknown'), 'source_locator: ' + JSON.stringify(item.source_locator), '---', '', '# ' + item.title, '', item.content_text].join('\n')
-    const filename = (item.title.replace(/[^\p{L}\p{N}-]+/gu, '-').replace(/^-|-$/g, '').slice(0, 72) || 'lifeos-note') + '-' + item.id.slice(0, 8)
-    const blob = new Blob([text], { type: 'text/markdown;charset=utf-8' }); const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = filename + '.md'; link.click(); URL.revokeObjectURL(link.href)
+    setError('')
+    try {
+      const source = sources.find((entry) => entry.id === item.source_id)
+      const sourceName = source?.name || (item.kind === 'quick_note' ? 'Quick notes' : 'Life OS')
+      const organization = await api<ItemOrganization>('/items/' + item.id + '/organization', token)
+      const filename = (item.title.replace(/[^\p{L}\p{N}-]+/gu, '-').replace(/^-|-$/g, '').slice(0, 72) || 'lifeos-note') + '-' + item.id.slice(0, 8)
+      const result = await exportToVault({
+        filename: filename + '.md',
+        markdown: buildItemMarkdown(item, sourceName, organization.tags.map((tag) => tag.name), organization.collections.map((collection) => collection.name)),
+      }, vaultPolicy)
+      setNotice(result.status === 'kept'
+        ? `已保留现有文件 ${result.filename}，未覆盖你的修改。`
+        : result.status === 'downloaded'
+          ? `${result.filename} 已下载。${result.reason}`
+          : `已写入 Vault：${result.filename}`)
+    } catch (e) {
+      if (!(e instanceof DOMException && e.name === 'AbortError')) setError(e instanceof Error ? e.message : '导出失败。')
+    }
   }
 
   async function downloadSource(item: Item) {
@@ -407,6 +523,12 @@ function App() {
   }
 
   async function deleteItem(item: Item) {
+    if (item.kind === 'quick_note') {
+      if (!window.confirm('只删除这条快速笔记？其他笔记和导入来源不会受影响。')) return
+      try { await api('/quick-notes/' + item.id, token, { method: 'DELETE' }); await refresh(); setNotice('快速笔记已删除。') }
+      catch (e) { setError(e instanceof Error ? e.message : '无法删除笔记。') }
+      return
+    }
     const source = sources.find((entry) => entry.id === item.source_id)
     const label = source ? '"' + source.name + '"' : '这个导入来源'
     if (!window.confirm('删除 ' + label + '？这会移除原始文件以及该来源产生的全部时间线条目，而不只是当前条目。此操作不可撤销。')) return
@@ -445,7 +567,7 @@ function App() {
   async function generateReview(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); const data = new FormData(event.currentTarget); setBusy(true); setError('')
     try {
-      const review = await api<Review>('/reviews/generate', token, { method: 'POST', body: JSON.stringify({ period_start: data.get('start'), period_end: data.get('end'), use_external_model: externalModel }) })
+      const review = await api<Review>('/reviews/generate', token, { method: 'POST', body: JSON.stringify({ period_start: data.get('start'), period_end: data.get('end'), use_external_model: externalModel, provider_id: externalModel ? reviewProviderId || undefined : undefined, model: externalModel ? reviewModel || undefined : undefined }) })
       await refresh()
       const jobId = review.draft.model?.job_id
       if (jobId) setNotice('周复盘处理中，本地模板在运行期间仍可用。')
@@ -500,11 +622,22 @@ function App() {
   }
 
   async function downloadReview(review: Review) {
+    setError('')
     try {
       const response = await fetch(API + '/reviews/' + review.id + '/export.md', { headers: { Authorization: 'Bearer ' + token } })
       if (!response.ok) throw new Error('这条复盘暂时无法导出。')
-      const blob = await response.blob(); const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = 'weekly-review-' + review.period_start.slice(0, 10) + '.md'; link.click(); URL.revokeObjectURL(link.href)
-    } catch (e) { setError(e instanceof Error ? e.message : '复盘导出失败。') }
+      const result = await exportToVault({
+        filename: 'weekly-review-' + review.period_start.slice(0, 10) + '.md',
+        markdown: buildReviewMarkdown(await response.text(), review),
+      }, vaultPolicy)
+      setNotice(result.status === 'kept'
+        ? `已保留现有文件 ${result.filename}，未覆盖你的修改。`
+        : result.status === 'downloaded'
+          ? `${result.filename} 已下载。${result.reason}`
+          : `已写入 Vault：${result.filename}`)
+    } catch (e) {
+      if (!(e instanceof DOMException && e.name === 'AbortError')) setError(e instanceof Error ? e.message : '复盘导出失败。')
+    }
   }
 
   function openSource(item: Item) {
@@ -512,20 +645,77 @@ function App() {
     window.setTimeout(() => document.getElementById('timeline-item-' + item.id)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 450)
   }
 
-  async function submitSearch(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    const trimmed = searchQuery.trim()
+  function currentSearchFilters(): SearchFilters {
+    return {
+      types: searchTypes,
+      start: searchStart || null,
+      end: searchEnd || null,
+      source_id: searchSourceId || null,
+      status: searchStatus ? [searchStatus] : [],
+      tag_id: searchTagId || null,
+      collection_id: searchCollectionId || null,
+    }
+  }
+
+  async function runSearch(trimmed: string, filters: SearchFilters) {
     if (!trimmed) return
     setSearchLoading(true); setError('')
     try {
-      const results = await api<SearchResults>('/search?q=' + encodeURIComponent(trimmed), token)
-      setSearchResults(results)
+      const params = new URLSearchParams({ q: trimmed, types: filters.types.join(',') })
+      if (filters.start) params.set('start', filters.start)
+      if (filters.end) params.set('end', filters.end)
+      if (filters.source_id) params.set('source_id', filters.source_id)
+      if (filters.status.length) params.set('status', filters.status.join(','))
+      if (filters.tag_id) params.set('tag_id', filters.tag_id)
+      if (filters.collection_id) params.set('collection_id', filters.collection_id)
+      setSearchResults(await api<SearchResults>('/search?' + params.toString(), token))
     } catch (e) { setError(e instanceof Error ? e.message : '搜索失败，请重试。') }
     finally { setSearchLoading(false) }
   }
 
+  async function submitSearch(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    await runSearch(searchQuery.trim(), currentSearchFilters())
+  }
+
+  async function saveCurrentSearch(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const name = savedSearchName.trim()
+    if (!name || !searchQuery.trim()) return
+    try {
+      await api<SavedSearch>('/saved-searches', token, {
+        method: 'POST',
+        body: JSON.stringify({ name, query: searchQuery.trim(), filters: currentSearchFilters() }),
+      })
+      setSavedSearchName('')
+      setNotice('检索已保存。')
+      await refresh()
+    } catch (e) { setError(e instanceof Error ? e.message : '无法保存检索。') }
+  }
+
+  function applySavedSearch(entry: SavedSearch) {
+    setSearchQuery(entry.query)
+    setSearchTypes(entry.filters.types)
+    setSearchStart(entry.filters.start || '')
+    setSearchEnd(entry.filters.end || '')
+    setSearchSourceId(entry.filters.source_id || '')
+    setSearchStatus(entry.filters.status[0] || '')
+    setSearchTagId(entry.filters.tag_id || '')
+    setSearchCollectionId(entry.filters.collection_id || '')
+    void runSearch(entry.query, entry.filters)
+  }
+
+  async function deleteSavedSearch(entry: SavedSearch) {
+    if (!window.confirm(`删除保存的检索“${entry.name}”？`)) return
+    try {
+      await api('/saved-searches/' + entry.id, token, { method: 'DELETE' })
+      setNotice('保存的检索已删除。')
+      await refresh()
+    } catch (e) { setError(e instanceof Error ? e.message : '无法删除保存的检索。') }
+  }
+
   function openTimelineHit(hit: SearchTimelineHit) {
-    setPage('timeline'); setSourceFilter(hit.source_id); setDateStart(''); setDateEnd(''); setQuery('')
+    setPage('timeline'); setSourceFilter(hit.kind === 'quick_note' ? '' : hit.source_id); setDateStart(''); setDateEnd(''); setQuery('')
     window.setTimeout(() => document.getElementById('timeline-item-' + hit.id)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 450)
   }
 
@@ -554,7 +744,7 @@ function App() {
 
   async function deleteAccount() {
     if (!window.confirm('永久删除账号与全部已存数据？如需副本请先下载归档。')) return
-    try { await api('/account', token, { method: 'DELETE' }); sessionStorage.removeItem('lifeos-token'); activeToken.current = ''; setToken(''); setUser(null) }
+    try { await api('/account', token, { method: 'DELETE' }); sessionStorage.removeItem('lifeos-token'); void clearPendingSharedCapture(); activeToken.current = ''; setToken(''); setUser(null) }
     catch (e) { setError(e instanceof Error ? e.message : '账号删除失败。') }
   }
 
@@ -563,30 +753,46 @@ function App() {
   const searchTotal = searchResults ? searchResults.timeline.total + searchResults.reviews.total + searchResults.reminders.total : 0
   const dueReminders = reminders.filter((reminder) => ['pending', 'snoozed'].includes(reminder.status) && reminder.due_at && new Date(reminder.due_at).getTime() <= now)
   const readyReview = schedule?.last_review_id ? reviews.find((review) => review.id === schedule.last_review_id && review.status === 'draft') : undefined
-  const pageTitle: Record<Page, string> = { timeline: '时间线', ask: '提问', graph: '图谱', pending: '待审', projects: '项目与目标', reviews: '复盘', search: '搜索', account: '设置' }
+  const selectedReviewProvider = providers.find((provider) => provider.id === reviewProviderId)
+  const pageTitle: Record<Page, string> = { timeline: '时间线', ask: '提问', graph: '图谱', pending: '待审', projects: '项目与目标', reviews: '复盘', search: '搜索', organize: '整理', account: '设置', capture: '快速捕获' }
 
-  return <div className="app-shell"><aside className="sidebar"><div className="brand"><span className="brand-mark small">L</span><span>Life OS</span></div><nav aria-label="Main navigation"><button className={page === 'timeline' ? 'nav-link active' : 'nav-link'} onClick={() => setPage('timeline')}>◷ <span>时间线</span></button><button className={page === 'ask' ? 'nav-link active' : 'nav-link'} onClick={() => setPage('ask')}>✦ <span>提问</span></button><button className={page === 'graph' ? 'nav-link active' : 'nav-link'} onClick={() => setPage('graph')}>◇ <span>图谱</span></button><button className={page === 'pending' ? 'nav-link active' : 'nav-link'} onClick={() => setPage('pending')}>✓ <span>待审</span>{pendingReviewTotal > 0 && <span className="nav-badge">{pendingReviewTotal}</span>}</button><button className={page === 'projects' ? 'nav-link active' : 'nav-link'} onClick={() => setPage('projects')}>◎ <span>项目与目标</span></button><button className={page === 'reviews' ? 'nav-link active' : 'nav-link'} onClick={() => setPage('reviews')}>✳ <span>复盘</span>{dueReminders.length > 0 && <span className="nav-badge">{dueReminders.length}</span>}</button><button className={page === 'search' ? 'nav-link active' : 'nav-link'} onClick={() => setPage('search')}>⌕ <span>搜索</span></button><button className={page === 'account' ? 'nav-link active' : 'nav-link'} onClick={() => setPage('account')}>⚙ <span>设置</span></button></nav><div className="sidebar-foot"><span className="avatar">{user?.email.slice(0, 1).toUpperCase()}</span><span className="user-email">{user?.email}</span><button className="icon-button" title="Sign out" onClick={() => { sessionStorage.removeItem('lifeos-token'); activeToken.current = ''; setToken(''); setUser(null) }}>↗</button></div></aside>
-    <main className="main"><header className="topbar"><div><p className="eyebrow">你的个人知识空间</p><h1>{pageTitle[page]}</h1></div><span className="privacy-pill"><span className="live-dot" /> 私有工作区</span></header>
+  return <div className="app-shell"><aside className="sidebar"><div className="brand"><span className="brand-mark small">L</span><span>Life OS</span></div><nav aria-label="Main navigation"><button aria-label="时间线" className={page === 'timeline' ? 'nav-link active' : 'nav-link'} onClick={() => setPage('timeline')}>◷ <span>时间线</span></button><button aria-label="捕获" className={page === 'capture' ? 'nav-link active' : 'nav-link'} onClick={() => setPage('capture')}>✎ <span>捕获</span></button><button aria-label="导航：提问" className={page === 'ask' ? 'nav-link active' : 'nav-link'} onClick={() => setPage('ask')}>✦ <span>提问</span></button><button aria-label="图谱" className={page === 'graph' ? 'nav-link active' : 'nav-link'} onClick={() => setPage('graph')}>◇ <span>图谱</span></button><button aria-label="待审" className={page === 'pending' ? 'nav-link active' : 'nav-link'} onClick={() => setPage('pending')}>✓ <span>待审</span>{pendingReviewTotal > 0 && <span className="nav-badge">{pendingReviewTotal}</span>}</button><button aria-label="项目与目标" className={page === 'projects' ? 'nav-link active' : 'nav-link'} onClick={() => setPage('projects')}>◎ <span>项目与目标</span></button><button aria-label="复盘" className={page === 'reviews' ? 'nav-link active' : 'nav-link'} onClick={() => setPage('reviews')}>✳ <span>复盘</span>{dueReminders.length > 0 && <span className="nav-badge">{dueReminders.length}</span>}</button><button aria-label="导航：搜索" className={page === 'search' ? 'nav-link active' : 'nav-link'} onClick={() => setPage('search')}>⌕ <span>搜索</span></button><button aria-label="导航：整理" className={page === 'organize' ? 'nav-link active' : 'nav-link'} onClick={() => setPage('organize')}>▤ <span>整理</span></button><button aria-label="设置" className={page === 'account' ? 'nav-link active' : 'nav-link'} onClick={() => setPage('account')}>⚙ <span>设置</span></button></nav><div className="sidebar-foot"><span className="avatar">{user?.email.slice(0, 1).toUpperCase()}</span><span className="user-email">{user?.email}</span><button className="icon-button" title="Sign out" onClick={() => { sessionStorage.removeItem('lifeos-token'); void clearPendingSharedCapture(); activeToken.current = ''; setToken(''); setUser(null) }}>↗</button></div></aside>
+    <main className="main"><header className="topbar"><div><p className="eyebrow">你的个人知识空间</p><h1>{pageTitle[page]}</h1></div><div className="topbar-actions">{page !== 'capture' && <label className="vault-policy">Vault 冲突<select aria-label="Vault 冲突策略" value={vaultPolicy} onChange={(event) => setVaultPolicy(event.target.value as VaultConflictPolicy)}><option value="keep">保留现有（默认）</option><option value="copy">另存副本</option><option value="overwrite">明确覆盖</option></select></label>}<span className="privacy-pill"><span className="live-dot" /> 私有工作区</span></div></header>
       {error && <div className="notice error" role="alert">{error}<button className="icon-button" onClick={() => setError('')}>×</button></div>}
       {notice && <div className="notice success" role="status">{notice}<button className="icon-button" onClick={() => setNotice('')}>×</button></div>}
       {agentActiveTotal > 0 && <div className="notice success">Agent 自动写入了 {agentActiveTotal} 项内部记录，可在设置中查看并一键撤销。<button className="text-button" onClick={() => setPage('account')}>查看并撤销 ↗</button></div>}
+      {page === 'capture' && <CapturePage token={token} items={items} reminders={reminders} now={now} onSaved={() => void refresh()} onError={setError} onNotice={setNotice} onOpenTimeline={() => setPage('timeline')} onReminderAction={updateReminder} />}
       {page === 'ask' && <AskPanel token={token} sources={sources} onError={setError} onNotice={setNotice} onOpenCitation={openTimelineCitation} />}
       {page === 'graph' && <GraphPanel view="graph" token={token} onError={setError} onNotice={setNotice} onPendingChange={setPendingReviewTotal} onOpenItem={openTimelineCitation} />}
       {page === 'pending' && <GraphPanel view="pending" token={token} onError={setError} onNotice={setNotice} onPendingChange={setPendingReviewTotal} onOpenItem={openTimelineCitation} />}
       {page === 'projects' && <ProjectsPanel token={token} onError={setError} onNotice={setNotice} onOpenItem={openTimelineCitation} />}
       {page === 'timeline' && <><section className="hero-panel"><div><p className="eyebrow">记录重要内容</p><h2>让上下文真正有用。</h2><p className="muted">导入选中的笔记、会话或照片。时间线会把每条记录与它的来源保持连接。</p></div><div className="stat"><strong>{timelineTotal}</strong><span>条时间线记录</span></div></section>
         {pendingReviewTotal > 0 && <div className="notice success">有 {pendingReviewTotal} 条低置信度图谱条目待审。<button className="text-button" onClick={() => setPage('graph')}>去处理 ↗</button></div>}
-        <section className="panel import-panel"><div className="panel-heading"><div><p className="eyebrow">添加来源</p><h2>导入已选材料</h2></div><span className="limit-pill">文本 ≤5 MB · 照片 ≤20 MB</span></div><form onSubmit={importSelected} className="import-form"><label className="file-drop"><span className="upload-icon">↑</span><span><strong>{file ? file.name : '选择文件'}</strong><small>支持 Markdown、TXT、PDF、DOCX、聊天 JSON/JSONL、JPEG、PNG、WebP</small></span><input type="file" accept=".md,.markdown,.txt,.pdf,.docx,.json,.jsonl,image/jpeg,image/png,image/webp" multiple onChange={(event) => void previewFiles(event.target.files)} /></label><label className="folder-picker">选择照片文件夹<input ref={directoryInput} type="file" accept="image/jpeg,image/png,image/webp" multiple onChange={(event) => void previewFiles(event.target.files, true)} /></label>{conversations.length > 0 && <div className="selection-box"><div className="selection-head"><strong>选择要导入的会话</strong><button type="button" className="text-button" onClick={() => setSelected(selected.length === conversations.length ? [] : conversations.map((entry) => entry.id))}>{selected.length === conversations.length ? '清空选择' : '全选'}</button></div><div className="conversation-list">{conversations.map((entry) => <label className="conversation" key={entry.id}><input type="checkbox" checked={selected.includes(entry.id)} onChange={(event) => setSelected(event.target.checked ? [...selected, entry.id] : selected.filter((value) => value !== entry.id))} /><span>{entry.title}<small>{entry.created_at ? new Date(entry.created_at * 1000).toLocaleDateString() : '日期未知'}</small></span></label>)}</div><p className="small-note">未选中的会话不会上传。</p></div>}{photoFiles.length > 0 && <><p className="small-note">已选择 {photoFiles.length} 张照片。每张单独上传；不会发送文件夹路径或不支持的文件。</p>{photoFiles.length === 1 && <div className="local-photo-preview"><img src={photoPreview} alt="所选照片预览" /><p className="small-note">保存的照片会重新编码以移除 EXIF 位置等元数据，OCR 文本可搜索。</p></div>}{photoFiles.length === 1 && <label className="inline-field">照片日期（可选）<input type="datetime-local" value={photoDate} onChange={(event) => setPhotoDate(event.target.value)} /></label>}</>}<div className="import-actions"><p className="small-note">提交后才会处理所选文件。</p>{photoFiles.length > 1 ? <p className="selection-disclosure"><strong>{photoFiles.length} 张照片 · {photoFiles.reduce((total, selectedFile) => total + selectedFile.size, 0).toLocaleString()} 字节。</strong> 所选照片会被清理并处理；EXIF/GPS 元数据会被移除。</p> : file && <p className="selection-disclosure"><strong>{file.name} · {file.size.toLocaleString()} 字节。</strong> {selectedFileDisclosure(file, selected.length)}</p>}<button className="primary" disabled={busy || !file}>{busy ? '导入中…' : '导入所选'}</button></div></form></section>
-        <section className="timeline-layout"><div className="panel timeline-panel"><div className="panel-heading"><div><p className="eyebrow">你的记录</p><h2>最近活动</h2></div><span className="count-pill">{visibleItems.length} / {timelineTotal}</span></div><label className="search"><span>⌕</span><input aria-label="搜索时间线" placeholder="搜索笔记与会话" value={query} onChange={(event) => setQuery(event.target.value)} /><kbd>⌘ K</kbd></label><div className="filter-row"><label>从<input type="date" value={dateStart} onChange={(event) => setDateStart(event.target.value)} /></label><label>至<input type="date" value={dateEnd} onChange={(event) => setDateEnd(event.target.value)} /></label><label>来源<select value={sourceFilter} onChange={(event) => setSourceFilter(event.target.value)}><option value="">全部来源</option>{sources.map((source) => <option value={source.id} key={source.id}>{source.name}</option>)}</select></label></div><div className="button-row extract-toolbar"><span className="small-note">已选 {extractSelected.length} 条</span><button className="secondary" disabled={!extractSelected.length || extracting} onClick={() => void extractItems()}>{extracting ? '抽取中…' : '抽取所选'}</button>{extractSelected.length > 0 && <button className="text-button" onClick={() => setExtractSelected([])}>清空选择</button>}</div><div className="timeline-list">{visibleItems.map((item) => { const source = sources.find((entry) => entry.id === item.source_id); return <article className="timeline-item" id={'timeline-item-' + item.id} key={item.id}><input type="checkbox" className="timeline-select" aria-label={'选择抽取 ' + item.title} checked={extractSelected.includes(item.id)} onChange={(event) => setExtractSelected(event.target.checked ? [...extractSelected, item.id] : extractSelected.filter((id) => id !== item.id))} /><span className="timeline-marker">{item.kind === 'chat_message' ? '✳' : item.kind === 'photo' ? '▧' : '▤'}</span><div className="item-content"><div className="item-meta"><span>{item.occurred_at ? new Date(item.occurred_at).toLocaleString() : '日期未知'}</span><span className="dot-separator">·</span><span>{source?.name || '导入来源'}</span></div><h3>{item.title}</h3>{item.kind === 'photo' && Boolean(item.metadata.ocr_status) && <div className="photo-ocr-state"><span>OCR: {String(item.metadata.ocr_status).replace('_', ' ')}</span>{['failed', 'cancelled'].includes(String(item.metadata.ocr_status)) && <button className="text-button" onClick={() => void retryPhotoOcr(item)}>重试 OCR</button>}</div>}{item.kind === 'photo' && <><PhotoImage itemId={item.id} token={token} />{disclosure?.available && <div className="photo-description"><button className="text-button" disabled={!user?.ai_consent_at || ['queued', 'running'].includes(String(item.metadata.description_status))} onClick={() => void describePhoto(item)}>{['queued', 'running'].includes(String(item.metadata.description_status)) ? '生成中…' : photoDescriptions[item.id] || item.metadata.description_status === 'confirmed' ? '再生成一版' : item.metadata.description_status === 'draft' ? '查看已保存草稿' : ['failed', 'cancelled'].includes(String(item.metadata.description_status)) ? '重试描述' : '使用 AI 描述'}</button><span className="small-note">同意后会把清理后的照片发送给 {disclosure.provider}。</span>{photoDescriptions[item.id] && <><textarea value={photoDescriptions[item.id]} onChange={(event) => setPhotoDescriptions((current) => ({ ...current, [item.id]: event.target.value }))} rows={3} aria-label="Photo description draft" /><button className="secondary" onClick={() => void confirmPhotoDescription(item)}>把描述加入时间线</button></>}</div>}</>}<p>{item.content_text.slice(0, 360)}{item.content_text.length > 360 ? '…' : ''}</p><div className="item-actions"><span className="source-tag">{String(item.source_locator.role || item.kind)}</span><button className="text-button" onClick={() => void exportItem(item)}>导出 Markdown ↗</button><button className="text-button" onClick={() => void downloadSource(item)}>下载原件 ↗</button><button className="text-button danger-text" onClick={() => void deleteItem(item)}>删除导入来源</button></div></div></article> })}{visibleItems.length === 0 && <div className="empty-state"><span>◷</span><strong>时间线已就绪</strong><p>导入选中的 Markdown 笔记或聊天记录后会显示在这里。</p></div>}</div>{timelineCursor && <button className="secondary full" onClick={() => void loadMoreTimeline()}>加载更多时间线</button>}</div><aside className="panel source-rail"><div className="panel-heading"><div><p className="eyebrow">已连接来源</p><h2>Sources</h2></div><span className="count-pill">{sources.length}</span></div>{sources.length === 0 && <p className="muted">选择的来源会显示在这里。</p>}{sources.slice(0, 5).map((source) => <div className="source-row" key={source.id}><span className="source-icon">{source.kind === 'photo' ? '▧' : source.kind === 'chatgpt_export' ? '✳' : '▤'}</span><div><strong>{source.name}</strong><small>{source.status.replace('_', ' ')}</small></div><span className={source.status === 'active' ? 'status-dot' : 'status-dot paused'} /></div>)}<button className="secondary full" onClick={() => setPage('account')}>管理来源</button></aside></section></>}
+        <QuickNotePanel token={token} onSaved={() => void refresh()} onError={setError} onNotice={setNotice} />
+        <section className="panel import-panel"><div className="panel-heading"><div><p className="eyebrow">添加来源</p><h2>导入已选材料</h2></div><span className="limit-pill">文本 ≤5 MB · 照片 ≤20 MB</span></div><form onSubmit={importSelected} className="import-form"><label className="file-drop"><span className="upload-icon">↑</span><span><strong>{file ? file.name : '选择文件'}</strong><small>支持 Markdown、TXT、PDF、DOCX、ICS 日历、聊天 JSON/JSONL、JPEG、PNG、WebP</small></span><input type="file" accept=".md,.markdown,.txt,.pdf,.docx,.ics,.json,.jsonl,image/jpeg,image/png,image/webp" multiple onChange={(event) => void previewFiles(event.target.files)} /></label><label className="folder-picker">选择照片文件夹<input ref={directoryInput} type="file" accept="image/jpeg,image/png,image/webp" multiple onChange={(event) => void previewFiles(event.target.files, true)} /></label>{calendarPreview && <div className="calendar-preview"><strong>日历预览：{calendarPreview.events} 个日程</strong><p className="small-note">每次上传按完整快照对账；取消或消失的日程会退出时间线。{calendarPreview.recurring > 0 ? `检测到 ${calendarPreview.recurring} 个含重复规则的日程，首版会明确跳过。` : '未检测到重复规则属性。'}</p><label>导入方式<select aria-label="日历导入方式" value={calendarSourceId} onChange={(event) => setCalendarSourceId(event.target.value)}><option value="">作为新日历来源导入</option>{sources.filter((source) => source.kind === 'calendar_ics').map((source) => <option value={source.id} key={source.id} disabled={source.status !== 'active'}>更新现有日历：{source.name}（{source.status}）</option>)}</select></label></div>}{conversations.length > 0 && <div className="selection-box"><div className="selection-head"><strong>选择要导入的会话</strong><button type="button" className="text-button" onClick={() => setSelected(selected.length === conversations.length ? [] : conversations.map((entry) => entry.id))}>{selected.length === conversations.length ? '清空选择' : '全选'}</button></div><div className="conversation-list">{conversations.map((entry) => <label className="conversation" key={entry.id}><input type="checkbox" checked={selected.includes(entry.id)} onChange={(event) => setSelected(event.target.checked ? [...selected, entry.id] : selected.filter((value) => value !== entry.id))} /><span>{entry.title}<small>{entry.created_at ? new Date(entry.created_at * 1000).toLocaleDateString() : '日期未知'}</small></span></label>)}</div><p className="small-note">未选中的会话不会上传。</p></div>}{photoFiles.length > 0 && <><p className="small-note">已选择 {photoFiles.length} 张照片。每张单独上传；不会发送文件夹路径或不支持的文件。</p>{photoFiles.length === 1 && <div className="local-photo-preview"><img src={photoPreview} alt="所选照片预览" /><p className="small-note">保存的照片会重新编码以移除 EXIF 位置等元数据，OCR 文本可搜索。</p></div>}{photoFiles.length === 1 && <label className="inline-field">照片日期（可选）<input type="datetime-local" value={photoDate} onChange={(event) => setPhotoDate(event.target.value)} /></label>}</>}<div className="import-actions"><p className="small-note">提交后才会处理所选文件。</p>{photoFiles.length > 1 ? <p className="selection-disclosure"><strong>{photoFiles.length} 张照片 · {photoFiles.reduce((total, selectedFile) => total + selectedFile.size, 0).toLocaleString()} 字节。</strong> 所选照片会被清理并处理；EXIF/GPS 元数据会被移除。</p> : file && <p className="selection-disclosure"><strong>{file.name} · {file.size.toLocaleString()} 字节。</strong> {selectedFileDisclosure(file, selected.length)}</p>}<button className="primary" disabled={busy || !file}>{busy ? '导入中…' : '导入所选'}</button></div></form></section>
+        <section className="timeline-layout"><div className="panel timeline-panel"><div className="panel-heading"><div><p className="eyebrow">你的记录</p><h2>最近活动</h2></div><span className="count-pill">{visibleItems.length} / {timelineTotal}</span></div><label className="search"><span>⌕</span><input aria-label="搜索时间线" placeholder="搜索笔记与会话" value={query} onChange={(event) => setQuery(event.target.value)} /><kbd>⌘ K</kbd></label><div className="filter-row"><label>从<input type="date" value={dateStart} onChange={(event) => setDateStart(event.target.value)} /></label><label>至<input type="date" value={dateEnd} onChange={(event) => setDateEnd(event.target.value)} /></label><label>来源<select value={sourceFilter} onChange={(event) => setSourceFilter(event.target.value)}><option value="">全部来源</option>{sourceFilter && !sources.some((source) => source.id === sourceFilter) && <option value={sourceFilter}>当前筛选（快速笔记）</option>}{sources.map((source) => <option value={source.id} key={source.id}>{source.name}</option>)}</select></label></div><div className="button-row extract-toolbar"><span className="small-note">已选 {extractSelected.length} 条</span><button className="secondary" disabled={!extractSelected.length || extracting} onClick={() => void extractItems()}>{extracting ? '抽取中…' : '抽取所选'}</button>{extractSelected.length > 0 && <button className="text-button" onClick={() => setExtractSelected([])}>清空选择</button>}</div><div className="timeline-list">{visibleItems.map((item) => { const source = sources.find((entry) => entry.id === item.source_id); return <article className="timeline-item" id={'timeline-item-' + item.id} key={item.id}><input type="checkbox" className="timeline-select" aria-label={'选择抽取 ' + item.title} checked={extractSelected.includes(item.id)} onChange={(event) => setExtractSelected(event.target.checked ? [...extractSelected, item.id] : extractSelected.filter((id) => id !== item.id))} /><span className="timeline-marker">{item.kind === 'chat_message' ? '✳' : item.kind === 'photo' ? '▧' : item.kind === 'calendar_event' ? '▦' : item.kind === 'quick_note' ? '✎' : '▤'}</span><div className="item-content"><div className="item-meta"><span>{item.occurred_at ? new Date(item.occurred_at).toLocaleString() : '日期未知'}</span><span className="dot-separator">·</span><span>{source?.name || (item.kind === 'quick_note' ? '快速笔记' : item.kind === 'calendar_event' ? '日历' : '导入来源')}</span></div><h3>{item.title}</h3>{item.kind === 'quick_note' && editingNoteId === item.id && <QuickNoteEditor item={item} token={token} onCancel={() => setEditingNoteId('')} onSaved={() => { setEditingNoteId(''); void refresh() }} onError={setError} onNotice={setNotice} />}{item.kind === 'photo' && Boolean(item.metadata.ocr_status) && <div className="photo-ocr-state"><span>OCR: {String(item.metadata.ocr_status).replace('_', ' ')}</span>{['failed', 'cancelled'].includes(String(item.metadata.ocr_status)) && <button className="text-button" onClick={() => void retryPhotoOcr(item)}>重试 OCR</button>}</div>}{item.kind === 'photo' && <><PhotoImage itemId={item.id} token={token} />{disclosure?.available && <div className="photo-description"><button className="text-button" disabled={!user?.ai_consent_at || ['queued', 'running'].includes(String(item.metadata.description_status))} onClick={() => void describePhoto(item)}>{['queued', 'running'].includes(String(item.metadata.description_status)) ? '生成中…' : photoDescriptions[item.id] || item.metadata.description_status === 'confirmed' ? '再生成一版' : item.metadata.description_status === 'draft' ? '查看已保存草稿' : ['failed', 'cancelled'].includes(String(item.metadata.description_status)) ? '重试描述' : '使用 AI 描述'}</button><span className="small-note">同意后会把清理后的照片发送给 {disclosure.provider}。</span>{photoDescriptions[item.id] && <><textarea value={photoDescriptions[item.id]} onChange={(event) => setPhotoDescriptions((current) => ({ ...current, [item.id]: event.target.value }))} rows={3} aria-label="Photo description draft" /><button className="secondary" onClick={() => void confirmPhotoDescription(item)}>把描述加入时间线</button></>}</div>}</>}{!(item.kind === 'quick_note' && editingNoteId === item.id) && <p>{item.content_text.slice(0, 360)}{item.content_text.length > 360 ? '…' : ''}</p>}<div className="item-actions"><span className="source-tag">{String(item.source_locator.role || item.kind)}</span><button className="text-button" onClick={() => { setOrganizingItemId(item.id); setPage('organize') }}>整理</button>{item.kind === 'quick_note' ? <><button className="text-button" onClick={() => setEditingNoteId(item.id)}>编辑笔记</button><button className="text-button" onClick={() => void exportItem(item)}>导出 Markdown ↗</button><button className="text-button danger-text" onClick={() => void deleteItem(item)}>删除笔记</button></> : <><button className="text-button" onClick={() => void exportItem(item)}>导出 Markdown ↗</button><button className="text-button" onClick={() => void downloadSource(item)}>下载原件 ↗</button><button className="text-button danger-text" onClick={() => void deleteItem(item)}>删除导入来源</button></>}</div></div></article> })}{visibleItems.length === 0 && <div className="empty-state"><span>◷</span><strong>时间线已就绪</strong><p>添加快速笔记，或导入选中的 Markdown、聊天、日历与照片后会显示在这里。</p></div>}</div>{timelineCursor && <button className="secondary full" onClick={() => void loadMoreTimeline()}>加载更多时间线</button>}</div><aside className="panel source-rail"><div className="panel-heading"><div><p className="eyebrow">已连接来源</p><h2>Sources</h2></div><span className="count-pill">{sources.length}</span></div>{sources.length === 0 && <p className="muted">选择的来源会显示在这里。</p>}{sources.slice(0, 5).map((source) => <div className="source-row" key={source.id}><span className="source-icon">{source.kind === 'photo' ? '▧' : source.kind === 'chatgpt_export' ? '✳' : '▤'}</span><div><strong>{source.name}</strong><small>{source.status.replace('_', ' ')}</small></div><span className={source.status === 'active' ? 'status-dot' : 'status-dot paused'} /></div>)}<button className="secondary full" onClick={() => setPage('account')}>管理来源</button></aside></section></>}
       {page === 'search' && <section className="panel search-page">
-        <div className="panel-heading"><div><p className="eyebrow">统一搜索</p><h2>找回你保存的一切</h2></div></div>
+        <div className="panel-heading"><div><p className="eyebrow">统一搜索</p><h2>找回你保存的一切</h2></div>{searchResults && <span className="count-pill">{searchResults.index_backend}</span>}</div>
         <form className="search-form" onSubmit={submitSearch}>
           <label>搜索时间线、复盘与提醒<input type="search" value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="试试主题、人物或承诺" /></label>
-          <button className="primary" disabled={searchLoading || !searchQuery.trim()}>{searchLoading ? '搜索中…' : '搜索'}</button>
+          <button className="primary" disabled={searchLoading || !searchQuery.trim() || searchTypes.length === 0}>{searchLoading ? '搜索中…' : '搜索'}</button>
         </form>
+        <div className="search-filter-grid">
+          <fieldset className="type-filters"><legend>结果类型</legend>{(['timeline', 'reviews', 'reminders'] as const).map((type) => <label className="check-row compact" key={type}><input type="checkbox" checked={searchTypes.includes(type)} onChange={(event) => setSearchTypes(event.target.checked ? [...searchTypes, type] : searchTypes.filter((value) => value !== type))} /><span>{type === 'timeline' ? '时间线' : type === 'reviews' ? '周复盘' : '提醒'}</span></label>)}</fieldset>
+          <label>从<input type="date" value={searchStart} onChange={(event) => setSearchStart(event.target.value)} /></label>
+          <label>至<input type="date" value={searchEnd} onChange={(event) => setSearchEnd(event.target.value)} /></label>
+          <label>来源<select value={searchSourceId} onChange={(event) => setSearchSourceId(event.target.value)}><option value="">全部来源</option>{sources.map((source) => <option value={source.id} key={source.id}>{source.name}</option>)}</select></label>
+          <label>状态<select value={searchStatus} onChange={(event) => setSearchStatus(event.target.value)}><option value="">全部状态</option>{['draft', 'processing', 'confirmed', 'pending', 'snoozed', 'completed', 'cancelled'].map((status) => <option value={status} key={status}>{status}</option>)}</select></label>
+          <label>标签<select value={searchTagId} onChange={(event) => setSearchTagId(event.target.value)}><option value="">全部标签</option>{tags.map((tag) => <option value={tag.id} key={tag.id}>{tag.name}</option>)}</select></label>
+          <label>集合<select value={searchCollectionId} onChange={(event) => setSearchCollectionId(event.target.value)}><option value="">全部集合</option>{collections.map((collection) => <option value={collection.id} key={collection.id}>{collection.name}</option>)}</select></label>
+        </div>
+        <div className="saved-search-bar">
+          <form className="saved-search-form" onSubmit={saveCurrentSearch}><label>保存当前检索<input value={savedSearchName} maxLength={120} onChange={(event) => setSavedSearchName(event.target.value)} placeholder="检索名称" /></label><button className="secondary" disabled={!savedSearchName.trim() || !searchQuery.trim()}>保存检索</button></form>
+          {savedSearches.length > 0 && <div className="saved-search-list">{savedSearches.map((entry) => <div className="saved-search-row" key={entry.id}><button className="text-button" onClick={() => applySavedSearch(entry)}>{entry.name}<small>{entry.query}</small></button><button className="text-button danger-text" onClick={() => void deleteSavedSearch(entry)}>删除</button></div>)}</div>}
+        </div>
         {searchLoading && <p className="muted" role="status">正在搜索你的时间线、复盘与提醒…</p>}
         {!searchLoading && !searchResults && <p className="muted">按标题和正文搜索时间线、周复盘与提醒；每条结果都能回到原始记录。</p>}
-        {!searchLoading && searchResults && searchTotal === 0 && <div className="empty-state"><span>⌕</span><strong>没有结果</strong><p>没有匹配“{searchResults.query}”的记录，换个更短的关键词试试。</p></div>}
+        {!searchLoading && searchResults && searchTotal === 0 && <div className="empty-state"><span>⌕</span><strong>没有结果</strong><p>没有匹配“{searchResults.query}”的记录，试试调整关键词或筛选条件。</p></div>}
         {!searchLoading && searchResults && searchTotal > 0 && <div className="search-results">
           {searchResults.timeline.results.length > 0 && <section className="search-group">
             <div className="panel-heading"><h3>时间线 <span className="count-pill">{searchResults.timeline.total}</span></h3></div>
@@ -602,28 +808,275 @@ function App() {
           </section>}
         </div>}
       </section>}
-      {page === 'reviews' && schedule && <ReviewSchedulePanel schedule={schedule} timezone={user?.timezone || 'UTC'} consentEnabled={Boolean(user?.ai_consent_at)} onSave={saveSchedule} readyReview={readyReview} onOpenReview={(review) => document.getElementById('review-' + review.id)?.scrollIntoView({ behavior: 'smooth', block: 'center' })} />}
+      {page === 'organize' && <OrganizationPanel token={token} items={items} tags={tags} collections={collections} selectedItemId={organizingItemId} onSelect={setOrganizingItemId} onChanged={() => void refresh()} onError={setError} onNotice={setNotice} />}
+      {page === 'reviews' && schedule && <ReviewSchedulePanel schedule={schedule} timezone={user?.timezone || 'UTC'} providers={providers} onSave={saveSchedule} readyReview={readyReview} onOpenReview={(review) => document.getElementById('review-' + review.id)?.scrollIntoView({ behavior: 'smooth', block: 'center' })} />}
       {page === 'reviews' && dueReminders.length > 0 && <DueRemindersPanel reminders={dueReminders} onAction={updateReminder} />}
-      {page === 'reviews' && <section className="review-grid"><div className="panel"><div className="panel-heading"><div><p className="eyebrow">复盘时刻</p><h2>开始周复盘</h2></div></div><p className="muted">从这段时间线生成可编辑草稿。每条生成事实都能回到来源核对。</p><form className="review-form" onSubmit={generateReview}><label>从<input name="start" type="date" required /></label><label>至 <small>（不含）</small><input name="end" type="date" required /></label><label className="check-row"><input type="checkbox" checked={externalModel} disabled={!disclosure?.available || !user?.ai_consent_at} onChange={(event) => setExternalModel(event.target.checked)} /><span>使用外部 AI 模型<br /><small>请先在设置中启用当前提供方同意。</small></span></label><button className="primary" disabled={busy}>{busy ? '准备中…' : '生成草稿'}</button></form><div className="subsection"><div className="panel-heading"><h2>提醒</h2></div><form className="reminder-form" onSubmit={createReminder}><input name="title" placeholder="需要跟进什么？" required /><input name="due_at" type="datetime-local" aria-label="提醒到期时间" /><button className="secondary">添加提醒</button></form>{reminders.map((reminder) => <div className="reminder-row" id={'reminder-' + reminder.id} key={reminder.id}><div><strong>{reminder.title}</strong><small>{reminder.due_at ? new Date(reminder.due_at).toLocaleString() : '无到期时间'} · {reminder.status}</small></div>{reminder.status !== 'completed' && reminder.status !== 'cancelled' && <><button className="text-button" onClick={() => void updateReminder(reminder, 'completed')}>完成</button><button className="text-button" onClick={() => void updateReminder(reminder, 'snoozed')}>稍后提醒</button><button className="text-button" onClick={() => void updateReminder(reminder, 'cancelled')}>忽略</button></>}</div>)}</div></div><div className="review-list">{reviews.map((review) => <ReviewCard key={review.id + (review.final_text || "")} review={review} onSave={saveReview} onOpenSource={openSource} onExport={downloadReview} onCreateReminder={createReminderFromSuggestion} onUpdateSuggestion={updateSuggestion} />)}{reviews.length === 0 && <div className="panel empty-state"><span>✳</span><strong>复盘会显示在这里</strong><p>选择日期范围后，从有来源的时间线条目生成草稿。</p></div>}</div></section>}
+      {page === 'reviews' && <section className="review-grid"><div className="panel"><div className="panel-heading"><div><p className="eyebrow">复盘时刻</p><h2>开始周复盘</h2></div></div><p className="muted">从这段时间线生成可编辑草稿。每条生成事实都能回到来源核对。</p><form className="review-form" onSubmit={generateReview}><label>从<input name="start" type="date" required /></label><label>至 <small>（不含）</small><input name="end" type="date" required /></label><label className="check-row"><input type="checkbox" checked={externalModel} disabled={!selectedReviewProvider?.available || !selectedReviewProvider?.consent.consented} onChange={(event) => setExternalModel(event.target.checked)} /><span>使用外部 AI 模型<br /><small>请先在设置中同意所选提供方。</small></span></label>{externalModel && <><label>提供方<select value={reviewProviderId} onChange={(event) => { setReviewProviderId(event.target.value); setReviewModel('') }}>{providers.map((provider) => <option value={provider.id} key={provider.id}>{provider.id}{provider.consent.consented ? ' · 已同意' : ''}</option>)}</select></label><label>模型<select value={reviewModel} onChange={(event) => setReviewModel(event.target.value)}><option value="">默认模型</option>{(selectedReviewProvider?.models || []).map((name) => <option value={name} key={name}>{name}</option>)}</select></label></>}<button className="primary" disabled={busy}>{busy ? '准备中…' : '生成草稿'}</button></form><div className="subsection"><div className="panel-heading"><h2>提醒</h2></div><form className="reminder-form" onSubmit={createReminder}><input name="title" placeholder="需要跟进什么？" required /><input name="due_at" type="datetime-local" aria-label="提醒到期时间" /><button className="secondary">添加提醒</button></form>{reminders.map((reminder) => <div className="reminder-row" id={'reminder-' + reminder.id} key={reminder.id}><div><strong>{reminder.title}</strong><small>{reminder.due_at ? new Date(reminder.due_at).toLocaleString() : '无到期时间'} · {reminder.status}</small></div>{reminder.status !== 'completed' && reminder.status !== 'cancelled' && <><button className="text-button" onClick={() => void updateReminder(reminder, 'completed')}>完成</button><button className="text-button" onClick={() => void updateReminder(reminder, 'snoozed')}>稍后提醒</button><button className="text-button" onClick={() => void updateReminder(reminder, 'cancelled')}>忽略</button></>}</div>)}</div></div><div className="review-list">{reviews.map((review) => <ReviewCard key={review.id + (review.final_text || "")} review={review} token={token} onSave={saveReview} onOpenSource={openSource} onExport={downloadReview} onCreateReminder={createReminderFromSuggestion} onUpdateSuggestion={updateSuggestion} />)}{reviews.length === 0 && <div className="panel empty-state"><span>✳</span><strong>复盘会显示在这里</strong><p>选择日期范围后，从有来源的时间线条目生成草稿。</p></div>}</div></section>}
       {page === 'account' && <section className="account-grid"><div className="panel"><p className="eyebrow">账户</p><h2>{user?.email}</h2><p className="muted">时区：{user?.timezone}</p><div className="subsection"><p className="eyebrow">模型数据同意</p>{disclosure?.available ? <><p className="muted">提供方：{disclosure.provider} · 模型：{disclosure.model}</p><p className="muted">发送内容：{disclosure.data_sent}</p><p className="muted">保留说明：{disclosure.retention}</p><p className="muted">配置估算：每百万输入 token ${disclosure.input_cost_per_million_usd}，每百万输出 token ${disclosure.output_cost_per_million_usd}。单次预算检查：${disclosure.max_cost_per_call_usd}。调用失败或超出估算仍可能产生提供方费用。</p>{disclosure.privacy_url && <p><a href={disclosure.privacy_url} target="_blank" rel="noreferrer">提供方隐私条款 ↗</a></p>}<label className="check-row consent-check"><input type="checkbox" checked={consentAcknowledged} onChange={(event) => setConsentAcknowledged(event.target.checked)} /><span>我已阅读上述提供方与数据处理说明。</span></label><p className="small-note">当前同意状态：{user?.ai_consent_at ? '已启用' : '未启用'}</p><div className="button-row"><button className="primary" disabled={!consentAcknowledged || Boolean(user?.ai_consent_at)} onClick={() => void setModelConsent(true)}>启用外部 AI</button><button className="secondary" disabled={!user?.ai_consent_at} onClick={() => void setModelConsent(false)}>关闭</button></div></> : <p className="muted">未配置外部模型。模板复盘仍可用，不会向模型提供方发送复盘数据。</p>}</div><div className="subsection"><p className="eyebrow">你的数据</p><p className="muted">下载可移植归档，或永久删除账号与已存记录。</p><div className="button-row"><button className="secondary" onClick={() => void downloadAccountArchive()}>下载归档</button><button className="danger" onClick={() => void deleteAccount()}>删除账号</button></div></div></div><div className="panel"><div className="panel-heading"><div><p className="eyebrow">你的选择</p><h2>管理来源</h2></div></div>{sources.map((source) => <div className="manage-source" key={source.id}><div><strong>{source.name}</strong><small>{source.kind.replace('_', ' ')} · {source.status}</small><p className="source-scope">{sourceScopeDescription(source)}</p><small>上次导入：{source.last_sync_at ? new Date(source.last_sync_at).toLocaleString() : '从未'}</small><small>云端抽取：{source.cloud_consent_at ? '已允许' : '未启用'}</small></div><div className="button-row">{source.status === 'active' && <button className="text-button" onClick={() => void sourceAction(source, 'pause')}>暂停</button>}{source.status === 'paused' && <button className="text-button" onClick={() => void sourceAction(source, 'resume')}>恢复</button>}{source.status !== 'revoked' && <button className="text-button" onClick={() => void sourceAction(source, 'revoke')}>撤回</button>}<button className="text-button" disabled={source.status === 'revoked' || source.status === 'deleting'} onClick={() => void setCloudConsent(source, !source.cloud_consent_at)}>{source.cloud_consent_at ? '关闭云端抽取' : '允许云端抽取'}</button><button className="text-button danger-text" onClick={() => void sourceAction(source, 'delete')}>删除数据</button></div></div>)}{sources.length === 0 && <p className="muted">还没有来源。</p>}</div></section>}
+      {page === 'account' && <ModelProviderSettings token={token} providers={providers} onChanged={() => void refresh()} onError={setError} onNotice={setNotice} />}
       {page === 'account' && <PluginSettingsPanel token={token} onError={setError} onNotice={setNotice} />}
       {page === 'account' && <AgentActionsPanel token={token} onError={setError} onNotice={setNotice} />}
     </main></div>
 }
 
+function OrganizationPanel({ token, items, tags, collections, selectedItemId, onSelect, onChanged, onError, onNotice }: { token: string; items: Item[]; tags: Tag[]; collections: Collection[]; selectedItemId: string; onSelect: (itemId: string) => void; onChanged: () => void; onError: (message: string) => void; onNotice: (message: string) => void }) {
+  const [tagName, setTagName] = useState('')
+  const [tagColor, setTagColor] = useState('#647D59')
+  const [collectionName, setCollectionName] = useState('')
+  const [collectionDescription, setCollectionDescription] = useState('')
+  const [editingTag, setEditingTag] = useState<Tag | null>(null)
+  const [editTagName, setEditTagName] = useState('')
+  const [editTagColor, setEditTagColor] = useState('#647D59')
+  const [editingCollection, setEditingCollection] = useState<Collection | null>(null)
+  const [editCollectionName, setEditCollectionName] = useState('')
+  const [editCollectionDescription, setEditCollectionDescription] = useState('')
+  const [selectedTagIds, setSelectedTagIds] = useState<string[]>([])
+  const [selectedCollectionIds, setSelectedCollectionIds] = useState<string[]>([])
+  const [busy, setBusy] = useState(false)
+
+  const loadOrganization = useCallback(async (itemId: string) => {
+    if (!itemId) { setSelectedTagIds([]); setSelectedCollectionIds([]); return }
+    try {
+      const organization = await api<ItemOrganization>('/items/' + itemId + '/organization', token)
+      setSelectedTagIds(organization.tags.map((tag) => tag.id))
+      setSelectedCollectionIds(organization.collections.map((collection) => collection.id))
+    } catch (e) { onError(e instanceof Error ? e.message : '无法加载条目整理信息。') }
+  }, [onError, token])
+
+  // Organization is loaded from the owner-scoped API when the selected item changes.
+  // eslint-disable-next-line react/set-state-in-effect
+  useEffect(() => { void loadOrganization(selectedItemId) }, [loadOrganization, selectedItemId])
+
+  async function createTag(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!tagName.trim()) return
+    setBusy(true)
+    try {
+      await api<Tag>('/tags', token, { method: 'POST', body: JSON.stringify({ name: tagName.trim(), color: tagColor }) })
+      setTagName(''); setTagColor('#647D59'); onNotice('标签已创建。'); onChanged()
+    } catch (e) { onError(e instanceof Error ? e.message : '无法创建标签。') }
+    finally { setBusy(false) }
+  }
+
+  async function createCollection(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!collectionName.trim()) return
+    setBusy(true)
+    try {
+      await api<Collection>('/collections', token, { method: 'POST', body: JSON.stringify({ name: collectionName.trim(), description: collectionDescription.trim() || null }) })
+      setCollectionName(''); setCollectionDescription(''); onNotice('集合已创建。'); onChanged()
+    } catch (e) { onError(e instanceof Error ? e.message : '无法创建集合。') }
+    finally { setBusy(false) }
+  }
+
+  async function saveTag() {
+    if (!editingTag || !editTagName.trim()) return
+    setBusy(true)
+    try {
+      await api<Tag>('/tags/' + editingTag.id, token, { method: 'PATCH', body: JSON.stringify({ name: editTagName.trim(), color: editTagColor }) })
+      setEditingTag(null); onNotice('标签已更新。'); onChanged()
+    } catch (e) { onError(e instanceof Error ? e.message : '无法更新标签。') }
+    finally { setBusy(false) }
+  }
+
+  async function saveCollection() {
+    if (!editingCollection || !editCollectionName.trim()) return
+    setBusy(true)
+    try {
+      await api<Collection>('/collections/' + editingCollection.id, token, { method: 'PATCH', body: JSON.stringify({ name: editCollectionName.trim(), description: editCollectionDescription.trim() || null, clear_description: !editCollectionDescription.trim() }) })
+      setEditingCollection(null); onNotice('集合已更新。'); onChanged()
+    } catch (e) { onError(e instanceof Error ? e.message : '无法更新集合。') }
+    finally { setBusy(false) }
+  }
+
+  async function removeTag(tag: Tag) {
+    if (!window.confirm(`删除标签“${tag.name}”？条目本身不会删除。`)) return
+    try {
+      await api('/tags/' + tag.id, token, { method: 'DELETE' })
+      setSelectedTagIds((current) => current.filter((id) => id !== tag.id))
+      onNotice('标签已删除。'); onChanged()
+    } catch (e) { onError(e instanceof Error ? e.message : '无法删除标签。') }
+  }
+
+  async function removeCollection(collection: Collection) {
+    if (!window.confirm(`删除集合“${collection.name}”？条目本身不会删除。`)) return
+    try {
+      await api('/collections/' + collection.id, token, { method: 'DELETE' })
+      setSelectedCollectionIds((current) => current.filter((id) => id !== collection.id))
+      onNotice('集合已删除。'); onChanged()
+    } catch (e) { onError(e instanceof Error ? e.message : '无法删除集合。') }
+  }
+
+  async function saveOrganization() {
+    if (!selectedItemId) return
+    setBusy(true)
+    try {
+      await api<ItemOrganization>('/items/' + selectedItemId + '/organization', token, { method: 'PUT', body: JSON.stringify({ tag_ids: selectedTagIds, collection_ids: selectedCollectionIds }) })
+      onNotice('条目整理已保存。'); onChanged()
+    } catch (e) { onError(e instanceof Error ? e.message : '无法保存条目整理。') }
+    finally { setBusy(false) }
+  }
+
+  const selectedItem = items.find((item) => item.id === selectedItemId)
+  return <section className="organization-layout">
+    <div className="panel organization-catalog">
+      <div className="panel-heading"><div><p className="eyebrow">知识组织</p><h2>标签</h2></div><span className="count-pill">{tags.length}</span></div>
+      <form className="organization-form" onSubmit={createTag}><label>新标签<input value={tagName} maxLength={80} onChange={(event) => setTagName(event.target.value)} placeholder="例如：研究" /></label><label>颜色<input type="color" value={tagColor} onChange={(event) => setTagColor(event.target.value)} /></label><button className="secondary" disabled={busy || !tagName.trim()}>添加标签</button></form>
+      <div className="organization-list">{tags.map((tag) => <div className="organization-row" key={tag.id}>
+        {editingTag?.id === tag.id ? <div className="organization-edit"><input aria-label="编辑标签名称" value={editTagName} onChange={(event) => setEditTagName(event.target.value)} /><input aria-label="编辑标签颜色" type="color" value={editTagColor} onChange={(event) => setEditTagColor(event.target.value)} /><button className="secondary" disabled={busy || !editTagName.trim()} onClick={() => void saveTag()}>保存</button><button className="text-button" onClick={() => setEditingTag(null)}>取消</button></div> : <><span className="tag-dot" style={{ background: tag.color || '#647D59' }} /><strong>{tag.name}</strong><div className="button-row"><button className="text-button" onClick={() => { setEditingTag(tag); setEditTagName(tag.name); setEditTagColor(tag.color || '#647D59') }}>编辑</button><button className="text-button danger-text" onClick={() => void removeTag(tag)}>删除</button></div></>}
+      </div>)}{tags.length === 0 && <p className="muted">还没有标签。</p>}</div>
+      <div className="panel-heading"><div><p className="eyebrow">主题归档</p><h2>集合</h2></div><span className="count-pill">{collections.length}</span></div>
+      <form className="organization-form" onSubmit={createCollection}><label>新集合<input value={collectionName} maxLength={120} onChange={(event) => setCollectionName(event.target.value)} placeholder="例如：毕业论文" /></label><label>说明<input value={collectionDescription} maxLength={1000} onChange={(event) => setCollectionDescription(event.target.value)} placeholder="可选" /></label><button className="secondary" disabled={busy || !collectionName.trim()}>添加集合</button></form>
+      <div className="organization-list">{collections.map((collection) => <div className="organization-row" key={collection.id}>
+        {editingCollection?.id === collection.id ? <div className="organization-edit"><input aria-label="编辑集合名称" value={editCollectionName} onChange={(event) => setEditCollectionName(event.target.value)} /><input aria-label="编辑集合说明" value={editCollectionDescription} onChange={(event) => setEditCollectionDescription(event.target.value)} /><button className="secondary" disabled={busy || !editCollectionName.trim()} onClick={() => void saveCollection()}>保存</button><button className="text-button" onClick={() => setEditingCollection(null)}>取消</button></div> : <><div><strong>{collection.name}</strong><small>{collection.description || '无说明'}</small></div><div className="button-row"><button className="text-button" onClick={() => { setEditingCollection(collection); setEditCollectionName(collection.name); setEditCollectionDescription(collection.description || '') }}>编辑</button><button className="text-button danger-text" onClick={() => void removeCollection(collection)}>删除</button></div></>}
+      </div>)}{collections.length === 0 && <p className="muted">还没有集合。</p>}</div>
+    </div>
+    <div className="panel organization-items">
+      <div className="panel-heading"><div><p className="eyebrow">条目关联</p><h2>整理时间线条目</h2></div></div>
+      <label>选择条目<select value={selectedItemId} onChange={(event) => onSelect(event.target.value)}><option value="">请选择</option>{items.map((item) => <option value={item.id} key={item.id}>{item.title}</option>)}</select></label>
+      {selectedItem ? <>
+        <div className="selected-item-summary"><strong>{selectedItem.title}</strong><p>{selectedItem.content_text.slice(0, 240)}</p></div>
+        <fieldset className="organization-checks"><legend>标签</legend>{tags.map((tag) => <label className="check-row compact" key={tag.id}><input type="checkbox" checked={selectedTagIds.includes(tag.id)} onChange={(event) => setSelectedTagIds(event.target.checked ? [...selectedTagIds, tag.id] : selectedTagIds.filter((id) => id !== tag.id))} /><span>{tag.name}</span></label>)}{tags.length === 0 && <p className="muted">先创建标签。</p>}</fieldset>
+        <fieldset className="organization-checks"><legend>集合</legend>{collections.map((collection) => <label className="check-row compact" key={collection.id}><input type="checkbox" checked={selectedCollectionIds.includes(collection.id)} onChange={(event) => setSelectedCollectionIds(event.target.checked ? [...selectedCollectionIds, collection.id] : selectedCollectionIds.filter((id) => id !== collection.id))} /><span>{collection.name}</span></label>)}{collections.length === 0 && <p className="muted">先创建集合。</p>}</fieldset>
+        <button className="primary" disabled={busy} onClick={() => void saveOrganization()}>{busy ? '保存中…' : '保存条目整理'}</button>
+      </> : <div className="empty-state"><span>▤</span><strong>选择一条记录</strong><p>从时间线点击“整理”，或在这里选择条目。</p></div>}
+    </div>
+  </section>
+}
+
+function localDateTimeValue(value: string | null): string {
+  if (!value) return ''
+  const date = new Date(value)
+  return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16)
+}
+
+function CapturePage({ token, items, reminders, now, onSaved, onError, onNotice, onOpenTimeline, onReminderAction }: { token: string; items: Item[]; reminders: Reminder[]; now: number; onSaved: () => void; onError: (message: string) => void; onNotice: (message: string) => void; onOpenTimeline: () => void; onReminderAction: (reminder: Reminder, status: string) => void }) {
+  const [shared, setShared] = useState<SharedCapture | null>(null)
+  const [loadingShare, setLoadingShare] = useState(true)
+
+  useEffect(() => {
+    let active = true
+    const applyShare = (value: unknown) => {
+      if (!active) return
+      const next = normalizeSharedCapture(value)
+      if (next.title || next.text || next.url) setShared(next)
+      setLoadingShare(false)
+    }
+    const params = new URLSearchParams(window.location.search)
+    if (params.has('title') || params.has('text') || params.has('url')) {
+      applyShare({ title: params.get('title'), text: params.get('text'), url: params.get('url') })
+      window.history.replaceState({}, '', '/capture')
+    }
+    const onMessage = (event: MessageEvent) => {
+      if (event.data?.type === 'lifeos-share') applyShare(event.data.payload)
+    }
+    window.addEventListener('message', onMessage)
+    void readPendingSharedCapture().then((pending) => {
+      if (pending) applyShare(pending)
+      else if (active) setLoadingShare(false)
+    }).catch(() => { if (active) setLoadingShare(false) })
+    return () => { active = false; window.removeEventListener('message', onMessage) }
+  }, [])
+
+  const dueReminders = reminders.filter((reminder) => ['pending', 'snoozed'].includes(reminder.status) && reminder.due_at && new Date(reminder.due_at).getTime() <= now)
+  return <div className="capture-page">
+    {shared && <p className="notice">已从分享填充标题与正文；保存后即可在时间线查看。</p>}
+    {loadingShare && <p className="muted" role="status">正在读取分享内容…</p>}
+    {!loadingShare && <QuickNotePanel key={shared?.receivedAt || 'empty'} token={token} initialTitle={shared?.title || ''} initialContent={shared ? sharedCaptureBody(shared) : ''} onSaved={onSaved} onError={onError} onNotice={onNotice} />}
+    {dueReminders.length > 0 && <DueRemindersPanel reminders={dueReminders} onAction={onReminderAction} />}
+    <section className="panel capture-recent"><div className="panel-heading"><div><p className="eyebrow">随时查看</p><h2>最近记录</h2></div><button className="secondary" onClick={onOpenTimeline}>查看时间线</button></div>{items.slice(0, 8).map((item) => <article className="capture-item" key={item.id}><strong>{item.title}</strong><small>{item.occurred_at ? new Date(item.occurred_at).toLocaleString() : '日期未知'}</small><p>{item.content_text.slice(0, 240)}{item.content_text.length > 240 ? '…' : ''}</p></article>)}{items.length === 0 && <p className="muted">保存第一条笔记后会显示在这里。</p>}</section>
+  </div>
+}
+
+function QuickNotePanel({ token, onSaved, onError, onNotice, initialTitle = '', initialContent = '' }: { token: string; onSaved: () => void; onError: (message: string) => void; onNotice: (message: string) => void; initialTitle?: string; initialContent?: string }) {
+  const [title, setTitle] = useState(initialTitle)
+  const [content, setContent] = useState(initialContent)
+  const [date, setDate] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!content.trim()) return
+    setBusy(true)
+    try {
+      await api<Item>('/quick-notes', token, {
+        method: 'POST',
+        body: JSON.stringify({
+          title: title.trim() || null,
+          content_text: content,
+          occurred_at: date ? new Date(date).toISOString() : null,
+          source_timezone: date ? Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC' : null,
+        }),
+      })
+      setTitle(''); setContent(''); setDate('')
+      onNotice('快速笔记已保存。')
+      onSaved()
+    } catch (e) { onError(e instanceof Error ? e.message : '无法保存快速笔记。') }
+    finally { setBusy(false) }
+  }
+
+  return <section className="panel quick-note-panel">
+    <div className="panel-heading"><div><p className="eyebrow">快速捕获</p><h2>添加笔记</h2></div><span className="limit-pill">无需外部 AI</span></div>
+    <form className="quick-note-form" onSubmit={submit}>
+      <label>标题（可选）<input value={title} maxLength={200} onChange={(event) => setTitle(event.target.value)} placeholder="给这条笔记一个标题" /></label>
+      <label>正文<textarea value={content} maxLength={20000} rows={3} required onChange={(event) => setContent(event.target.value)} placeholder="记录决定、想法或待跟进事项…" /></label>
+      <label>时间（可选）<input type="datetime-local" value={date} onChange={(event) => setDate(event.target.value)} /></label>
+      <button className="primary" disabled={busy || !content.trim()}>{busy ? '保存中…' : '保存笔记'}</button>
+    </form>
+  </section>
+}
+
+function QuickNoteEditor({ item, token, onCancel, onSaved, onError, onNotice }: { item: Item; token: string; onCancel: () => void; onSaved: () => void; onError: (message: string) => void; onNotice: (message: string) => void }) {
+  const [title, setTitle] = useState(item.title)
+  const [content, setContent] = useState(item.content_text)
+  const [date, setDate] = useState(localDateTimeValue(item.occurred_at))
+  const [busy, setBusy] = useState(false)
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!content.trim()) return
+    setBusy(true)
+    try {
+      await api<Item>('/quick-notes/' + item.id, token, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          title: title.trim() || null,
+          content_text: content,
+          ...(date
+            ? { occurred_at: new Date(date).toISOString(), source_timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC' }
+            : { clear_occurred_at: true, clear_source_timezone: true }),
+        }),
+      })
+      onNotice('快速笔记已更新。')
+      onSaved()
+    } catch (e) { onError(e instanceof Error ? e.message : '无法更新快速笔记。') }
+    finally { setBusy(false) }
+  }
+
+  return <form className="note-editor" onSubmit={submit}>
+    <label>标题<input value={title} maxLength={200} onChange={(event) => setTitle(event.target.value)} /></label>
+    <label>正文<textarea value={content} maxLength={20000} rows={5} required onChange={(event) => setContent(event.target.value)} /></label>
+    <label>时间（可选）<input type="datetime-local" value={date} onChange={(event) => setDate(event.target.value)} /></label>
+    <div className="button-row"><button className="primary" disabled={busy || !content.trim()}>{busy ? '保存中…' : '保存修改'}</button><button className="text-button" type="button" onClick={onCancel}>取消</button></div>
+  </form>
+}
+
 const WEEKDAYS = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
 const pad2 = (value: number) => String(value).padStart(2, '0')
 
-function ReviewSchedulePanel({ schedule, timezone, consentEnabled, onSave, readyReview, onOpenReview }: { schedule: ReviewSchedule; timezone: string; consentEnabled: boolean; onSave: (payload: SchedulePayload) => void; readyReview?: Review; onOpenReview: (review: Review) => void }) {
+function ReviewSchedulePanel({ schedule, timezone, providers, onSave, readyReview, onOpenReview }: { schedule: ReviewSchedule; timezone: string; providers: ModelProvider[]; onSave: (payload: SchedulePayload) => void; readyReview?: Review; onOpenReview: (review: Review) => void }) {
   const [enabled, setEnabled] = useState(schedule.enabled)
   const [weekday, setWeekday] = useState(schedule.weekday)
   const [time, setTime] = useState(pad2(schedule.local_hour) + ':' + pad2(schedule.local_minute))
   const [external, setExternal] = useState(schedule.use_external_model)
+  const [providerId, setProviderId] = useState(schedule.provider_id)
+  const [model, setModel] = useState(schedule.model || '')
+  const selectedProvider = providers.find((provider) => provider.id === providerId)
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const [hour, minute] = time.split(':').map(Number)
-    onSave({ enabled, weekday, local_hour: hour, local_minute: minute, timezone, use_external_model: external })
+    onSave({ enabled, weekday, local_hour: hour, local_minute: minute, timezone, use_external_model: external, provider_id: providerId, model: model || null })
   }
 
   return <section className="panel schedule-panel">
@@ -634,31 +1087,73 @@ function ReviewSchedulePanel({ schedule, timezone, consentEnabled, onSave, ready
       <label>星期<select value={weekday} onChange={(event) => setWeekday(Number(event.target.value))}>{WEEKDAYS.map((label, index) => <option value={index} key={label}>{label}</option>)}</select></label>
       <label>时间<input type="time" value={time} onChange={(event) => setTime(event.target.value)} required /></label>
       <label className="check-row"><input type="checkbox" checked={external} onChange={(event) => setExternal(event.target.checked)} /><span>有可用模型时使用外部 AI</span></label>
+      {external && <><label>提供方<select value={providerId} onChange={(event) => { setProviderId(event.target.value); setModel('') }}>{providers.map((provider) => <option value={provider.id} key={provider.id}>{provider.id}{provider.consent.consented ? ' · 已同意' : ''}</option>)}</select></label><label>模型<select value={model} onChange={(event) => setModel(event.target.value)}><option value="">默认模型</option>{(selectedProvider?.models || []).map((name) => <option value={name} key={name}>{name}</option>)}</select></label></>}
       <div className="button-row"><button className="secondary" type="submit">保存计划</button></div>
     </form>
     {schedule.last_run_at && <p className="small-note">上次计划运行： {new Date(schedule.last_run_at).toLocaleString()}</p>}
-    {external && !consentEnabled && <p className="small-note">外部 AI 未启用；启用同意前，计划复盘会使用模板。</p>}
+    {external && !selectedProvider?.consent.consented && <p className="small-note">所选提供方尚未同意；启用同意前，计划复盘会使用模板。</p>}
     {readyReview && <p className="notice success">计划复盘已就绪。 <button className="text-button" type="button" onClick={() => onOpenReview(readyReview)}>打开复盘</button></p>}
   </section>
 }
 
 function DueRemindersPanel({ reminders, onAction }: { reminders: Reminder[]; onAction: (reminder: Reminder, status: string) => void }) {
+  const [notificationMessage, setNotificationMessage] = useState('')
+  const [enablingNotification, setEnablingNotification] = useState(false)
+  async function enableNotifications() {
+    setEnablingNotification(true)
+    const result = await enableDueNotifications(reminders.length, '/reviews')
+    setNotificationMessage(result.status === 'enabled' || result.status === 'already-enabled' ? '浏览器通知已启用。' : 'message' in result ? result.message : '通知状态未知。')
+    setEnablingNotification(false)
+  }
   return <section className="panel due-reminders">
     <div className="panel-heading"><div><p className="eyebrow">到期提醒</p><h2>需要跟进的承诺</h2></div><span className="count-pill">{reminders.length}</span></div>
+    <div className="notification-actions"><button className="secondary" disabled={enablingNotification} onClick={() => void enableNotifications()}>{enablingNotification ? '请求授权中…' : '启用浏览器通知'}</button><span className="small-note">需明确授权；拒绝不影响应用内提醒。</span></div>
+    {notificationMessage && <p className="small-note" role="status">{notificationMessage}</p>}
     {reminders.map((reminder) => <div className="reminder-row" key={reminder.id}><div><strong>{reminder.title}</strong><small>{reminder.due_at ? new Date(reminder.due_at).toLocaleString() : '无到期时间'} · {reminder.status}</small></div><div className="button-row"><button className="text-button" onClick={() => onAction(reminder, 'completed')}>完成</button><button className="text-button" onClick={() => onAction(reminder, 'snoozed')}>稍后提醒</button></div></div>)}
   </section>
 }
 
-function ReviewCard({ review, onSave, onOpenSource, onExport, onCreateReminder, onUpdateSuggestion }: { review: Review; onSave: (review: Review, text: string) => void; onOpenSource: (item: Item) => void; onExport: (review: Review) => void; onCreateReminder: (suggestion: ReviewSuggestion) => void; onUpdateSuggestion: (review: Review, index: number, patch: { text?: string; status?: 'pending' | 'dismissed' }) => void }) {
+function ReviewInsightsPanel({ insights }: { insights: ReviewInsights }) {
+  if (!insights || (!insights.trends?.length && !insights.commitments?.length && !insights.goals?.length)) return null
+  return <section className="review-insights">
+    {insights.trends?.length > 0 && <div><p className="eyebrow">跨周期趋势</p>{insights.trends.map((trend) => <p key={trend.topic}>{trend.topic} · 本期 {trend.current_count} / 前期 {trend.previous_count} · {trend.direction}</p>)}</div>}
+    {insights.commitments?.length > 0 && <div><p className="eyebrow">承诺与到期日</p>{insights.commitments.map((commitment, index) => <p key={index}>{commitment.text} · {commitment.due_date || '日期未明确'}</p>)}</div>}
+    {insights.goals?.length > 0 && <div><p className="eyebrow">目标关联</p>{insights.goals.map((goal) => <p key={goal.entity_id}>{goal.name} · 置信度 {Math.round(goal.confidence * 100)}%</p>)}</div>}
+  </section>
+}
+
+function ReviewCard({ review, token, onSave, onOpenSource, onExport, onCreateReminder, onUpdateSuggestion }: { review: Review; token: string; onSave: (review: Review, text: string) => void; onOpenSource: (item: Item) => void; onExport: (review: Review) => void; onCreateReminder: (suggestion: ReviewSuggestion) => void; onUpdateSuggestion: (review: Review, index: number, patch: { text?: string; status?: 'pending' | 'dismissed' }) => void }) {
   const [text, setText] = useState(review.final_text || '')
   const [editingIndex, setEditingIndex] = useState<number | null>(null)
   const [suggestionDraft, setSuggestionDraft] = useState('')
+  const [versions, setVersions] = useState<ReviewVersion[]>([])
+  const [leftVersion, setLeftVersion] = useState(1)
+  const [rightVersion, setRightVersion] = useState(1)
+
+  // Version history is loaded from the owner-scoped API for this review.
+  // eslint-disable-next-line react/set-state-in-effect
+  useEffect(() => {
+    let active = true
+    void api<ReviewVersion[]>('/reviews/' + review.id + '/versions', token).then((list) => {
+      if (!active) return
+      setVersions(list)
+      setLeftVersion(list[0]?.version_number || 1)
+      setRightVersion(list[list.length - 1]?.version_number || 1)
+    }).catch(() => undefined)
+    return () => { active = false }
+  }, [review.id, token])
   const processing = review.status === 'processing'
   const suggestions = review.draft?.suggestions || []
   const pendingSuggestions = suggestions.map((suggestion, index) => ({ suggestion, index })).filter(({ suggestion }) => suggestion.status !== 'dismissed')
   const dismissedSuggestions = suggestions.map((suggestion, index) => ({ suggestion, index })).filter(({ suggestion }) => suggestion.status === 'dismissed')
   const suggestionEditable = review.status === 'draft'
   const evidence = (suggestion: ReviewSuggestion) => review.source_items.filter((item) => suggestion.source_ids.includes(item.id)).map((item) => item.title).join(', ') || '来源详情不可用'
+  const compareLeft = versions.find((version) => version.version_number === leftVersion)
+  const compareRight = versions.find((version) => version.version_number === rightVersion)
+  const leftLines = new Set((compareLeft?.final_text || '').split('\n').filter(Boolean))
+  const rightLines = new Set((compareRight?.final_text || '').split('\n').filter(Boolean))
+  const addedLines = [...rightLines].filter((line) => !leftLines.has(line))
+  const removedLines = [...leftLines].filter((line) => !rightLines.has(line))
   return <article className="panel review-card" id={'review-' + review.id}>
     <div className="panel-heading"><div><p className="eyebrow">{review.status.toUpperCase()}</p><h2>{new Date(review.period_start).toLocaleDateString()} — {new Date(review.period_end).toLocaleDateString()}</h2></div><div className="button-row"><button className="secondary" onClick={() => onExport(review)} disabled={processing || review.status === 'invalidated'}>导出 Markdown</button><button className="primary" onClick={() => onSave(review, text)} disabled={processing || review.status === 'invalidated'}>确认并保存</button></div></div>
     {processing && <p className="notice">外部模型处理中。如果提供方失败，本地模板仍会保留。</p>}
@@ -666,6 +1161,7 @@ function ReviewCard({ review, onSave, onOpenSource, onExport, onCreateReminder, 
       ? 'AI 草稿 · ' + (review.draft.model.model || 'model') + ' · ' + (review.draft.model.latency_ms ?? 0) + ' ms · $' + (review.draft.model.estimated_cost_usd || '0')
       : '模板草稿 · 外部模型 ' + (review.draft.model.status || 'unavailable')}</p>}
     {review.status === 'invalidated' && <p className="notice error">一个来源已被删除。重新生成复盘以恢复证据。</p>}
+    <ReviewInsightsPanel insights={review.insights} />
     {suggestions.length > 0 ? <div className="review-suggestions"><p className="eyebrow">建议行动</p>
       {pendingSuggestions.map(({ suggestion, index }) => <div className="suggestion-row" key={index}>
         <div>
@@ -693,6 +1189,7 @@ function ReviewCard({ review, onSave, onOpenSource, onExport, onCreateReminder, 
         </div>)}
       </details>}
     </div> : null}
+    {versions.length > 0 && <details className="review-versions"><summary>版本对比 · 当前 v{review.version_number}</summary><div className="version-controls"><label>基线<select value={leftVersion} onChange={(event) => setLeftVersion(Number(event.target.value))}>{versions.map((version) => <option value={version.version_number} key={version.id}>v{version.version_number} · {version.reason}</option>)}</select></label><label>对比<select value={rightVersion} onChange={(event) => setRightVersion(Number(event.target.value))}>{versions.map((version) => <option value={version.version_number} key={version.id}>v{version.version_number} · {version.reason}</option>)}</select></label></div><p className="small-note">新增 {addedLines.length} 行 · 移除 {removedLines.length} 行</p><div className="version-diff"><section><h4>v{leftVersion}</h4><pre>{compareLeft?.final_text || '（空）'}</pre></section><section><h4>v{rightVersion}</h4><pre>{compareRight?.final_text || '（空）'}</pre></section></div></details>}
     <textarea value={text} onChange={(event) => setText(event.target.value || '')} placeholder="编辑复盘，使用下方来源核对事实。" rows={9} disabled={processing || review.status === 'invalidated'} /><details><summary>证据 ({review.source_items.length})</summary>{review.source_items.map((item) => <p className="evidence" key={item.id}><strong>{item.title}</strong><span>{item.content_text.slice(0, 180)}</span><button className="text-button" onClick={() => onOpenSource(item)}>在时间线中打开来源 ↗</button></p>)}</details>
   </article>
 }
@@ -1078,11 +1575,43 @@ function ProjectsPanel({ token, onError, onNotice, onOpenItem }: { token: string
   </section>
 }
 
+function ModelProviderSettings({ token, providers, onChanged, onError, onNotice }: { token: string; providers: ModelProvider[]; onChanged: () => void; onError: (message: string) => void; onNotice: (message: string) => void }) {
+  const [acknowledged, setAcknowledged] = useState<string[]>([])
+  const [busyId, setBusyId] = useState('')
+
+  async function setConsent(provider: ModelProvider, enabled: boolean) {
+    setBusyId(provider.id)
+    try {
+      await api('/model-providers/consent', token, {
+        method: 'PUT',
+        body: JSON.stringify({ provider_id: provider.id, enabled, disclosure_version: provider.disclosure_version }),
+      })
+      setAcknowledged((current) => current.filter((id) => id !== provider.id))
+      onNotice(enabled ? `已同意提供方 ${provider.id}。` : `已撤回提供方 ${provider.id} 的同意。`)
+      onChanged()
+    } catch (e) { onError(e instanceof Error ? e.message : '无法更新模型同意。') }
+    finally { setBusyId('') }
+  }
+
+  return <section className="panel provider-settings">
+    <div className="panel-heading"><div><p className="eyebrow">MODEL PROVIDERS</p><h2>模型提供方与同意</h2></div><span className="count-pill">{providers.length}</span></div>
+    <p className="muted">密钥只从环境或本地配置读取。切换提供方需要单独同意，撤回后该提供方的未完成模型任务会取消。</p>
+    {providers.length === 0 && <p className="muted">尚未配置外部模型提供方。</p>}
+    {providers.map((provider) => <div className="provider-row" key={provider.id}>
+      <div><strong>{provider.id} · {provider.model}{provider.local ? ' · 本地' : ''}{provider.builtin ? ' · 默认' : ''}</strong><small>输入 ${provider.input_cost_per_million_usd}/百万 token · 输出 ${provider.output_cost_per_million_usd}/百万 token · 单次上限 ${provider.max_cost_per_call_usd}</small><p className="small-note">发送内容：{provider.data_sent}</p><p className="small-note">保留说明：{provider.retention}</p>{provider.privacy_url && <a href={provider.privacy_url} target="_blank" rel="noreferrer">隐私条款 ↗</a>}<small>状态：{provider.available ? provider.consent.consented ? '已同意' : '未同意' : '配置不完整'}</small></div>
+      <div className="button-row">
+        {provider.consent.consented ? <button className="secondary" disabled={busyId === provider.id} onClick={() => void setConsent(provider, false)}>撤回同意</button> : <><label className="check-row compact"><input type="checkbox" checked={acknowledged.includes(provider.id)} onChange={(event) => setAcknowledged(event.target.checked ? [...acknowledged, provider.id] : acknowledged.filter((id) => id !== provider.id))} /><span>已阅读上述说明</span></label><button className="primary" disabled={!provider.available || !acknowledged.includes(provider.id) || busyId === provider.id} onClick={() => void setConsent(provider, true)}>同意并启用</button></>}
+      </div>
+    </div>)}
+  </section>
+}
+
 function PluginSettingsPanel({ token, onError, onNotice }: { token: string; onError: (message: string) => void; onNotice: (message: string) => void }) {
   const [plugins, setPlugins] = useState<Plugin[]>([])
   const [catalog, setCatalog] = useState<PluginCatalogEntry[]>([])
   const [audit, setAudit] = useState<PluginAudit[]>([])
   const [budget, setBudget] = useState<BudgetInfo | null>(null)
+  const [budgetPeriod, setBudgetPeriod] = useState<'day' | 'week' | 'month'>('month')
   const [selectedPlugin, setSelectedPlugin] = useState('')
   const [loading, setLoading] = useState(true)
 
@@ -1092,7 +1621,7 @@ function PluginSettingsPanel({ token, onError, onNotice }: { token: string; onEr
         api<{ items: Plugin[] }>('/plugins', token),
         api<{ items: PluginCatalogEntry[] }>('/plugins/catalog', token),
         api<{ items: PluginAudit[] }>('/plugins/audit', token),
-        api<BudgetInfo>('/budget', token),
+        api<BudgetInfo>('/budget?period=' + budgetPeriod, token),
       ])
       setPlugins(pluginList.items)
       setCatalog(catalogList.items)
@@ -1104,7 +1633,7 @@ function PluginSettingsPanel({ token, onError, onNotice }: { token: string; onEr
     } finally {
       setLoading(false)
     }
-  }, [onError, token])
+  }, [budgetPeriod, onError, token])
 
   // Settings combines several owner-scoped summaries.
   // eslint-disable-next-line react/set-state-in-effect
@@ -1139,12 +1668,14 @@ function PluginSettingsPanel({ token, onError, onNotice }: { token: string; onEr
 
   return <section className="graph-stack settings-extra">
     <section className="panel">
-      <div className="panel-heading"><div><p className="eyebrow">BUDGET</p><h2>模型预算与用量</h2></div>{budget && <span className="count-pill">{budget.month}</span>}</div>
+      <div className="panel-heading"><div><p className="eyebrow">BUDGET</p><h2>模型预算与用量</h2></div><label>周期<select value={budgetPeriod} onChange={(event) => setBudgetPeriod(event.target.value as 'day' | 'week' | 'month')}><option value="day">今日</option><option value="week">本周</option><option value="month">本月</option></select></label></div>
       {loading && <p className="muted" role="status">正在加载预算…</p>}
       {budget && <>
         <div className="budget-bar"><span style={{ width: (budget.limit_usd !== '0.00' ? Math.min(100, (Number(budget.spent_usd) / Number(budget.limit_usd)) * 100) : 0) + '%' }} /></div>
         <p className="muted">已用 ${budget.spent_usd} / ${budget.limit_usd} · 剩余 ${budget.remaining_usd}{budget.warning ? ' · 已达到 80% 提醒阈值' : ''}{budget.over_budget ? ' · 已超出月度预算' : ''}</p>
-        {budget.by_purpose.length === 0 ? <p className="small-note">本月还没有模型调用费用。</p> : budget.by_purpose.map((entry) => <div className="audit-row" key={entry.purpose}><strong>{entry.purpose}</strong><small>${entry.cost_usd} · {entry.runs} 次</small></div>)}
+        <p className="small-note">{budget.runs} 次调用 · 输入 {budget.input_tokens} / 输出 {budget.output_tokens} token · 平均 {budget.avg_latency_ms} ms · 失败预留 ${budget.failure_reserve_usd}</p>
+        {budget.by_provider.map((entry) => <div className="audit-row" key={entry.provider}><strong>{entry.provider}</strong><small>${entry.cost_usd} · {entry.runs} 次 · {entry.input_tokens}/{entry.output_tokens} token · {entry.avg_latency_ms} ms</small></div>)}
+        {budget.by_purpose.length === 0 ? <p className="small-note">本周期还没有模型调用费用。</p> : budget.by_purpose.map((entry) => <div className="audit-row" key={entry.purpose}><strong>{entry.purpose}</strong><small>${entry.cost_usd} · {entry.runs} 次</small></div>)}
       </>}
     </section>
     <section className="panel">

@@ -30,6 +30,7 @@ from personal_ai_life_os.services.deletion import (
 )
 from personal_ai_life_os.services.graph_evidence import mark_source_evidence_unavailable
 from personal_ai_life_os.services.jobs import cancel_jobs_for_source
+from personal_ai_life_os.services.quick_notes import QuickNoteNotFound, delete_quick_note
 from personal_ai_life_os.storage import ObjectStore
 
 router = APIRouter(tags=["sources"])
@@ -48,6 +49,14 @@ def _source_or_404(session: SessionDep, source_id: str, owner_id: str) -> Source
             detail={"code": "source_not_found", "message": "The selected source was not found."},
         )
     return source
+
+
+def _reject_internal_source(source: SourceConnection) -> None:
+    if source.kind == "quick_note":
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "internal_source", "message": "Quick notes use an internal source and cannot be managed directly."},
+        )
 
 
 @router.post("/sources", response_model=SourceResponse, status_code=201)
@@ -77,6 +86,7 @@ def list_sources(user: CurrentUserDep, session: SessionDep) -> list[SourceConnec
             select(SourceConnection)
             .where(
                 SourceConnection.owner_id == user.id,
+                SourceConnection.kind != "quick_note",
                 SourceConnection.status != "deleting",
             )
             .order_by(SourceConnection.created_at.desc(), SourceConnection.id)
@@ -107,6 +117,7 @@ def update_source_status(
     session: SessionDep,
 ) -> SourceConnection:
     source = _source_or_404(session, source_id, user.id)
+    _reject_internal_source(source)
     if source.status not in {"active", "paused"}:
         raise HTTPException(
             status_code=409,
@@ -160,6 +171,7 @@ def update_source_cloud_consent(
     session: SessionDep,
 ) -> SourceConnection:
     source = _source_or_404(session, source_id, user.id)
+    _reject_internal_source(source)
     if source.status not in {"active", "paused"}:
         raise HTTPException(
             status_code=409,
@@ -193,6 +205,7 @@ def revoke_source(
     session: SessionDep,
 ) -> SourceConnection:
     source = _source_or_404(session, source_id, user.id)
+    _reject_internal_source(source)
     if source.status == "deleting":
         raise HTTPException(
             status_code=409,
@@ -219,6 +232,7 @@ def delete_source(
     session: SessionDep,
 ) -> Response:
     source = _source_or_404(session, source_id, user.id)
+    _reject_internal_source(source)
     store: ObjectStore = request.app.state.object_store
     try:
         tombstone = request_source_deletion(store, user.id, source_id)
@@ -301,6 +315,11 @@ def download_source_item(
             status_code=404,
             detail={"code": "item_not_found", "message": "The selected source item was not found."},
         )
+    if item.kind == "quick_note":
+        raise HTTPException(
+            status_code=410,
+            detail={"code": "source_content_unavailable", "message": "Quick notes do not have a separate original file."},
+        )
     store: ObjectStore = request.app.state.object_store
     try:
         content = store.get(item.object_key)
@@ -342,6 +361,23 @@ def delete_item_and_source_file(
             status_code=404,
             detail={"code": "item_not_found", "message": "The selected source item was not found."},
         )
+    if item.kind == "quick_note":
+        try:
+            delete_quick_note(session, request.app.state.object_store, user.id, item.id)
+        except QuickNoteNotFound as error:
+            raise HTTPException(
+                status_code=404,
+                detail={"code": "quick_note_not_found", "message": "The selected quick note was not found."},
+            ) from error
+        except Exception as error:
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "code": "deletion_journal_pending",
+                    "message": "The deletion could not be completed. Retry shortly.",
+                },
+            ) from error
+        return Response(status_code=204)
     # Every parsed entry points to the same selected source file. Removing a single
     # row while retaining that file would leave deleted text accessible as raw data.
     return delete_source(item.source_id, request, user, session)

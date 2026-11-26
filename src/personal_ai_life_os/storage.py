@@ -23,6 +23,8 @@ class ObjectStore(Protocol):
 
     def write_source_deletion_tombstone(self, owner_id: str, source_id: str, payload: bytes) -> None: ...
 
+    def write_item_deletion_tombstone(self, owner_id: str, item_id: str, payload: bytes) -> None: ...
+
     def list_deletion_tombstones(self) -> list[tuple[str, bytes]]: ...
 
     def delete_owner_objects(self, owner_id: str) -> None: ...
@@ -82,6 +84,11 @@ class LocalObjectStore:
         UUID(owner_id)
         UUID(source_id)
         self.put(f".deletion-tombstones/sources/{source_id}.json", payload, "application/json")
+
+    def write_item_deletion_tombstone(self, owner_id: str, item_id: str, payload: bytes) -> None:
+        UUID(owner_id)
+        UUID(item_id)
+        self.put(f".deletion-tombstones/items/{item_id}.json", payload, "application/json")
 
     def list_deletion_tombstones(self) -> list[tuple[str, bytes]]:
         directory = self.root / ".deletion-tombstones"
@@ -180,6 +187,11 @@ class S3ObjectStore:
         UUID(owner_id)
         UUID(source_id)
         self._write_journal(f".deletion-tombstones/sources/{source_id}.json", payload)
+
+    def write_item_deletion_tombstone(self, owner_id: str, item_id: str, payload: bytes) -> None:
+        UUID(owner_id)
+        UUID(item_id)
+        self._write_journal(f".deletion-tombstones/items/{item_id}.json", payload)
 
     def _write_journal(self, key: str, payload: bytes) -> None:
         self.journal_client.put_object(

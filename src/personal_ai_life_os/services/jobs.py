@@ -27,6 +27,7 @@ from personal_ai_life_os.models import (
     utcnow,
 )
 from personal_ai_life_os.parsers.photo import UnsupportedPhotoError, extract_photo_text_bytes
+from personal_ai_life_os.services.model_providers import DEFAULT_PROVIDER_ID
 from personal_ai_life_os.storage import ObjectStore
 
 logger = logging.getLogger(__name__)
@@ -166,7 +167,12 @@ def cancel_jobs_for_source(session: Session, source_id: str, *, reason: str = "s
                 review.status = "draft"
 
 
-def cancel_model_jobs_for_owner(session: Session, owner_id: str) -> None:
+def cancel_model_jobs_for_owner(
+    session: Session,
+    owner_id: str,
+    *,
+    provider_id: str | None = None,
+) -> None:
     now = utcnow()
     jobs = list(
         session.scalars(
@@ -177,6 +183,12 @@ def cancel_model_jobs_for_owner(session: Session, owner_id: str) -> None:
             )
         )
     )
+    if provider_id is not None:
+        jobs = [
+            job
+            for job in jobs
+            if str((job.payload_json or {}).get("provider") or DEFAULT_PROVIDER_ID) == provider_id
+        ]
     for job in jobs:
         job.status = "cancelled"
         job.error_code = "model_consent_withdrawn"
@@ -619,10 +631,18 @@ def _execute_weekly_review(session_factory: sessionmaker, job: JobEnvelope, conf
         InvalidReviewOutput,
         _call_openai,
         _estimate_openai_input_tokens,
+        _ground_model_draft,
         _render_markdown,
+        _snapshot_review,
         _template,
     )
-    from personal_ai_life_os.services.model_usage import model_cost_usd, model_rates_configured
+    from personal_ai_life_os.services.graph_extraction import monthly_spend
+    from personal_ai_life_os.services.model_consent import has_consent
+    from personal_ai_life_os.services.model_providers import (
+        ModelProviderError,
+        provider_cost,
+        resolve_model_provider,
+    )
 
     with session_factory() as session:
         if _current_claim(session, job) is None:
@@ -641,40 +661,62 @@ def _execute_weekly_review(session_factory: sessionmaker, job: JobEnvelope, conf
         ]
         if len(items) != len(review.source_items):
             raise RetryableJobError("review_source_unavailable")
-        consented = (
-            user.ai_consent_at is not None
-            and user.ai_consent_provider == config.model_provider
-            and user.ai_consent_disclosure_version == config.model_disclosure_version
-            and config.model_provider == "openai"
-            and bool(config.openai_api_key)
+        provider = None
+        try:
+            provider = resolve_model_provider(
+                config,
+                str((job.payload or {}).get("provider") or DEFAULT_PROVIDER_ID),
+                str((job.payload or {}).get("model") or "") or None,
+            )
+        except ModelProviderError:
+            provider = None
+        consented = bool(
+            provider is not None
+            and has_consent(session, user, provider)
+            and (provider.api_key or provider.local)
             and user.deletion_requested_at is None
         )
         review_id = review.id
+        monthly = monthly_spend(session, user.id)
+        remaining = (
+            config.model_monthly_budget_usd - monthly
+            if config.model_monthly_budget_usd > 0
+            else Decimal(999999999)
+        )
+        provider_id = provider.id if provider else str((job.payload or {}).get("provider") or DEFAULT_PROVIDER_ID)
+        provider_model = provider.model if provider else str((job.payload or {}).get("model") or "unavailable")
 
     draft = _template(items)
     run_status = "fallback"
     latency = input_tokens = output_tokens = 0
     call_cost = 0
-    if not consented:
-        draft["model"]["status"] = "consent_withdrawn"
-    elif not model_rates_configured(config):
-        draft["model"]["status"] = "budget_fallback"
+    if not consented or provider is None:
+        draft["model"].update({"provider": provider_id, "model": provider_model, "status": "consent_withdrawn"})
+    elif not provider.rates_configured or not provider.disclosure_ready:
+        draft["model"].update({"provider": provider_id, "model": provider_model, "status": "budget_fallback"})
+        run_status = "budget_fallback"
     else:
         estimated_input_tokens = _estimate_openai_input_tokens(items)
-        reserved_cost = model_cost_usd(estimated_input_tokens, config.model_max_output_tokens, config)
-        if reserved_cost is None or reserved_cost > config.model_max_cost_per_call_usd:
-            draft["model"]["status"] = "budget_fallback"
+        reserved_cost = provider_cost(provider, estimated_input_tokens, provider.max_output_tokens)
+        if (
+            reserved_cost is None
+            or reserved_cost > config.model_max_cost_per_call_usd
+            or reserved_cost > remaining
+        ):
+            draft["model"].update({"provider": provider_id, "model": provider_model, "status": "budget_fallback"})
             run_status = "budget_fallback"
         else:
             started = time.monotonic()
             try:
-                model_draft, latency, input_tokens, output_tokens = _call_openai(items, config)
-                call_cost = model_cost_usd(input_tokens, output_tokens, config) or reserved_cost
-                if call_cost <= config.model_max_cost_per_call_usd:
+                model_draft, latency, input_tokens, output_tokens = _call_openai(items, provider)
+                model_draft = _ground_model_draft(model_draft, items)
+                call_cost = provider_cost(provider, input_tokens, output_tokens) or reserved_cost
+                if call_cost <= config.model_max_cost_per_call_usd and call_cost <= remaining:
                     draft = model_draft
                     draft.setdefault("model", {})["status"] = "ready"
                     run_status = "succeeded"
                 else:
+                    draft = _template(items)
                     draft["model"]["status"] = "budget_fallback"
                     run_status = "budget_exceeded"
             except (
@@ -689,14 +731,14 @@ def _execute_weekly_review(session_factory: sessionmaker, job: JobEnvelope, conf
                 logger.warning("Weekly review model call failed (%s).", type(error).__name__)
                 latency = int((time.monotonic() - started) * 1000)
                 input_tokens = estimated_input_tokens
-                output_tokens = config.model_max_output_tokens
+                output_tokens = provider.max_output_tokens
                 call_cost = reserved_cost
                 draft = _template(items)
                 draft["model"]["status"] = "fallback"
             draft.setdefault("model", {}).update(
                 {
-                    "provider": config.model_provider,
-                    "model": config.openai_model,
+                    "provider": provider_id,
+                    "model": provider_model,
                     "prompt_version": PROMPT_VERSION,
                     "latency_ms": latency,
                     "input_tokens": input_tokens,
@@ -723,11 +765,12 @@ def _execute_weekly_review(session_factory: sessionmaker, job: JobEnvelope, conf
         review.draft_json = draft
         review.final_text = rendered
         review.status = "draft"
+        _snapshot_review(session, review, "model_completed")
         session.add(
             ModelRun(
                 owner_id=job.owner_id,
-                provider=config.model_provider,
-                model=config.openai_model,
+                provider=provider_id,
+                model=provider_model,
                 purpose="weekly_review",
                 status=run_status if consented else "fallback",
                 prompt_version=PROMPT_VERSION,

@@ -2,7 +2,7 @@
 
 **Your work and learning, captured with your consent, connected into useful personal memory.**
 
-An Apache-2.0 open source project for importing selected chat exports, photos, and agent memory files; reviewing a source-linked timeline; preparing weekly reflections and reminders; and exporting portable Markdown for Obsidian.
+An Apache-2.0 open source project for importing selected chat exports, calendar snapshots, photos, and agent memory files; capturing quick notes; reviewing a source-linked timeline; preparing weekly reflections and reminders; and exporting portable Markdown for Obsidian.
 
 > **MVP status:** the local API, CLI, web workflow, review/reminder flow, photo processing, and production deployment templates are implemented. The project has not been deployed to a hosted environment or approved for real personal data. Follow the [release checklist](docs/operations/release-checklist.md) before inviting users.
 
@@ -10,6 +10,8 @@ An Apache-2.0 open source project for importing selected chat exports, photos, a
 
 - Select and preview Markdown or ChatGPT export files locally. Chat messages are not printed in preview; the upload contains only chosen conversations.
 - Import Claude, Gemini, ZCode, DeepSeek harness, and WorkBuddy JSON/JSONL or Markdown exports, plus TXT, text-based PDF, and DOCX documents. Text extraction is local; scanned PDFs are not supported yet.
+- Preview and import a user-selected ICS calendar as a complete snapshot. Single and all-day events preserve UID, timezone, location, and description; updates replace prior versions, cancellations and missing events leave the timeline, and recurring rules are explicitly skipped.
+- Create, edit, search, export, and delete quick notes. Notes use the same timeline, review evidence, owner isolation, and deletion guarantees as imported items; deleting one note does not delete other notes.
 - Extract an evidence graph from manually selected items: entities, relations, exact quotes, confidence, and a low-confidence review state. Cloud extraction requires per-source consent, a configured provider, and the monthly/per-call budget.
 - Review, edit, approve, or reject low-confidence items; merge duplicate entities with a reversible snapshot; and approve custom ontology types before they enter later extraction prompts.
 - Ask questions over active evidence in the Chinese-first Ask page. Answers include structured facts, original citations, confidence, fact/inference/uncertain labels, missing information, and action suggestions. Threads remember the last scope and can be exported or deleted; revoked sources and deleted evidence are excluded.
@@ -18,14 +20,19 @@ An Apache-2.0 open source project for importing selected chat exports, photos, a
 - Install local connector and agent-tool plugins from a manifest. The reference JSON/Markdown connector can preview and import selected files; the reference graph-search tool reads owner-scoped evidence. Undeclared permissions are denied and plugin failures are isolated.
 - Use the Chinese-first navigation for timeline, Ask, graph, pending review, projects and goals, reviews, search, and settings, including budget, plugins, and source authorization.
 - Import up to ten user-selected JPEG, PNG, or WebP photos, including from a selected folder. The server re-encodes images to strip metadata and runs OCR inline or as a recoverable job, depending on configuration. Optional external reviews and photo descriptions require consent and use jobs in worker mode.
-- Browse and search an owner-scoped timeline with date and source filters, inspect the original source, and export stable Markdown files with conflict handling.
-- Search timeline items, weekly reviews, and reminders together on one page, with grouped results, per-group totals, snippets, and links back to each record.
+- Browse and search an owner-scoped timeline with date and source filters, inspect the original source, and export stable Markdown files with conflict handling. In supported Chromium browsers, explicitly select an Obsidian Vault directory and write frontmatter-rich Markdown; keep is the default, copy and overwrite are explicit, and denied or unsupported access falls back to download.
+- Install the web app as a PWA, use the mobile-friendly Capture page, and share text/title/URL into a quick note. Due reminders remain visible on mobile; browser notifications require explicit permission and never block the in-app flow.
+- Search timeline items, weekly reviews, and reminders together on one page, with grouped results, per-group totals, snippets, and links back to each record. Filter by result type, date, source, status, tag, or collection, and save reusable searches.
+- Organize timeline items with owner-scoped tags and collections. Create, rename, recolor, associate, filter, and delete them without deleting the underlying item; Markdown export and account archives include the organization metadata.
 - Generate an editable weekly review with source citations, save reminders, and export reviews as Markdown. Template reviews continue to work if external AI is unavailable. Save a weekly day/time to generate drafts automatically in worker mode, and see due or overdue reminders in the sidebar and "Due now" panel.
+- Choose an environment-backed OpenAI-compatible provider and model for manual or scheduled reviews. Consent is isolated per provider, switching providers requires renewed consent, and local loopback providers such as Ollama are supported without embedding credentials in the database.
+- Inspect cross-period topic trends, source-linked commitments and due dates, active goal associations, and read-only review version comparisons. Unsupported model facts are filtered before they become review drafts.
+- Review model usage by day, week, or month, with provider/purpose costs, token counts, latency, and failure reserves. A fixed 30-case multi-provider evaluation records citation support, unsupported claims, latency, and estimated cost.
 - Run a daily folder sync through the CLI with the Windows Task Scheduler helper; repeated runs reuse the source and SHA-256 deduplication.
 - Pause, resume, or revoke a source; download an account archive; delete a source or account.
 - Run with SQLite and local object storage for development, PostgreSQL in Compose, or a private S3-compatible store in a production deployment.
 
-The current search uses bounded, case-insensitive SQL `LIKE` substring matching across timeline items, weekly reviews, and reminders; there is no full-text or semantic index. Scheduled folder sync and scheduled weekly review drafts are available. Full-text/vector search, broad connectors, email or push delivery, and mobile capture remain outside this MVP.
+The current search uses bounded candidate indexes: SQLite FTS5 trigram and PostgreSQL `pg_trgm` GIN when available, with case-insensitive SQL `LIKE` fallback. Every candidate is rechecked against owner, current-version, deletion, source-status, and filter conditions. There is no semantic/vector index. Scheduled folder sync and scheduled weekly review drafts are available. Recurring ICS expansion, CalDAV/email/IM connectors, semantic/vector search, email or server push delivery, offline capture queues, and native mobile/desktop packages remain outside this MVP.
 
 ## Local development
 
@@ -40,6 +47,7 @@ For development on your own machine, install Python 3.11+ with [uv](https://docs
 ```powershell
 uv sync --python 3.11 --all-groups
 Copy-Item .env.example .env
+uv run alembic upgrade head
 uv run uvicorn personal_ai_life_os.main:app --reload
 ```
 
@@ -80,6 +88,8 @@ uv run pytest -q
 uv run python scripts/evaluate_reviews.py
 uv run python scripts/evaluate_search.py
 uv run python scripts/evaluate_graph_qa.py
+uv run python scripts/rebuild_search_index.py
+uv run python scripts/evaluate_review_models.py --providers default
 uv run python scripts/benchmark_mvp.py
 ```
 
@@ -96,9 +106,9 @@ The benchmark uses only generated data on local SQLite; it is not evidence of ho
 
 ## 中文简介
 
-Personal AI Life OS 是一个 Apache-2.0 开源的个人工作与学习记忆系统。用户明确选择资料后，可以导入 ChatGPT、Claude、Gemini、ZCode、DeepSeek harness、WorkBuddy 导出，以及 Markdown/TXT/PDF/DOCX 文档，查看可追溯的时间线，抽取带证据的实体/关系图谱，生成可编辑周复盘与提醒，并导出 Obsidian Markdown。可设置每周复盘计划并在应用内查看到期/逾期提醒，也可用 Windows 计划任务运行可重复的文件夹同步。
+Personal AI Life OS 是一个 Apache-2.0 开源的个人工作与学习记忆系统。用户明确选择资料后，可以导入 ChatGPT、Claude、Gemini、ZCode、DeepSeek harness、WorkBuddy 导出，以及 Markdown/TXT/PDF/DOCX 文档和 ICS 日历快照，查看可追溯的时间线，抽取带证据的实体/关系图谱，生成可编辑周复盘与提醒，并导出 Obsidian Markdown。Web 可直接创建、编辑、搜索和删除快速笔记；日历支持更新现有来源、取消与缺失事件对账。可设置每周复盘计划并在应用内查看到期/逾期提醒，也可用 Windows 计划任务运行可重复的文件夹同步。
 
-v0.5 进一步提供中文优先的时间线、提问、图谱、待审、项目与目标、复盘、搜索和设置界面；图谱支持低置信度待审、可撤销实体合并与自定义本体；个人问答只使用有效证据并给出引用与置信度；四条规则洞察支持忽略误报；Agent 可在 24 小时内撤销内部写入，四条红线必须人工批准；本地插件清单同时覆盖参考连接器与图谱检索工具。
+v0.5 进一步提供中文优先的时间线、提问、图谱、待审、项目与目标、复盘、搜索和设置界面；图谱支持低置信度待审、可撤销实体合并与自定义本体；个人问答只使用有效证据并给出引用与置信度；四条规则洞察支持忽略误报；Agent 可在 24 小时内撤销内部写入，四条红线必须人工批准；本地插件清单同时覆盖参考连接器与图谱检索工具。M7 增加 ICS 日历快照与快速笔记，M8 增加 trigram 检索索引、类型/日期/来源/状态/标签/集合筛选、保存检索以及标签和集合整理。M9 增加环境变量驱动的提供方/模型注册表、按提供方独立同意、手动与计划复盘模型选择、跨周期趋势/承诺到期日/目标关联、复盘版本对比，以及按日/周/月统计的模型用量与失败预留；固定 30 例多提供方评测报告见 `docs/operations/review-model-evaluation.json`。M10 增加显式选择目录的 Obsidian Vault 直写、keep/copy/overwrite 冲突策略与下载回退，以及带分享目标和移动捕获页的 PWA；浏览器通知需明确授权，应用内到期提醒在移动布局继续可用。
 
 MVP 的本地开发主流程已实现，但尚未部署到托管环境，也未通过真实用户私测准入。不要把真实个人资料放入未验证的共享部署；上线前请完成[发布清单](docs/operations/release-checklist.md)。
 

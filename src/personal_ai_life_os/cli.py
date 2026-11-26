@@ -574,12 +574,16 @@ def export(
         for item in selected_items:
             source_response = client.get("/api/v1/sources/" + item["source_id"])
             source_name = source_response.json().get("name", "Life OS") if source_response.status_code == 200 else "Life OS"
+            organization_response = client.get("/api/v1/items/" + item["id"] + "/organization")
+            organization = organization_response.json() if organization_response.status_code == 200 else {"tags": [], "collections": []}
             frontmatter = [
                 "---",
                 "id: " + item["id"],
                 "source: " + json.dumps(source_name, ensure_ascii=False),
                 "occurred_at: " + (item["occurred_at"] or "unknown"),
                 "source_locator: " + json.dumps(item["source_locator"], ensure_ascii=False),
+                "tags: " + json.dumps([tag["name"] for tag in organization.get("tags", [])], ensure_ascii=False),
+                "collections: " + json.dumps([collection["name"] for collection in organization.get("collections", [])], ensure_ascii=False),
                 "---",
                 "",
                 "# " + item["title"],

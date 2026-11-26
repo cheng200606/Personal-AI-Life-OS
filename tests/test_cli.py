@@ -129,6 +129,14 @@ def test_cli_login_sync_and_conflict_safe_export(client, monkeypatch, tmp_path: 
     source = client.get("/api/v1/sources", headers=headers).json()[0]
     assert source["kind"] == "memory_markdown"
     item = client.get("/api/v1/timeline", headers=headers).json()["items"][0]
+    tag = client.post("/api/v1/tags", headers=headers, json={"name": "CLI research"}).json()
+    collection = client.post("/api/v1/collections", headers=headers, json={"name": "CLI release"}).json()
+    organized = client.put(
+        f"/api/v1/items/{item['id']}/organization",
+        headers=headers,
+        json={"tag_ids": [tag["id"]], "collection_ids": [collection["id"]]},
+    )
+    assert organized.status_code == 200, organized.text
     destination = tmp_path / "vault"
     destination.mkdir()
 
@@ -139,6 +147,8 @@ def test_cli_login_sync_and_conflict_safe_export(client, monkeypatch, tmp_path: 
     assert exported.exit_code == 0, exported.output
     target = next(destination.glob("*.md"))
     assert item["id"] in target.read_text(encoding="utf-8")
+    assert 'tags: ["CLI research"]' in target.read_text(encoding="utf-8")
+    assert 'collections: ["CLI release"]' in target.read_text(encoding="utf-8")
 
     target.write_text("A deliberate user edit.", encoding="utf-8")
     repeated = runner.invoke(

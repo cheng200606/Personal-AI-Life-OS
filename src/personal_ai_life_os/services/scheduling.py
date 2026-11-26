@@ -19,8 +19,14 @@ from personal_ai_life_os.models import (
     User,
     utcnow,
 )
+from personal_ai_life_os.services.graph_extraction import monthly_spend
 from personal_ai_life_os.services.jobs import enqueue_background_job
-from personal_ai_life_os.services.model_usage import model_cost_usd, model_rates_configured
+from personal_ai_life_os.services.model_consent import has_consent
+from personal_ai_life_os.services.model_providers import (
+    ModelProviderError,
+    provider_cost,
+    resolve_model_provider,
+)
 
 logger = logging.getLogger(__name__)
 SCHEDULE_POLL_INTERVAL_SECONDS = 30.0
@@ -87,8 +93,10 @@ def _create_scheduled_review(
         PROMPT_VERSION,
         _estimate_openai_input_tokens,
         _render_markdown,
+        _snapshot_review,
         _template,
     )
+    from personal_ai_life_os.services.review_insights import build_review_insights
 
     start_at, end_at = _period_bounds(occurrence, schedule.timezone)
     items = _active_items(session, user.id, start_at, end_at)
@@ -110,50 +118,58 @@ def _create_scheduled_review(
 
     draft = _template(items)
     if schedule.use_external_model:
-        provider_ready = config.model_provider == "openai" and bool(config.openai_api_key)
-        consented = (
-            user.ai_consent_at is not None
-            and user.ai_consent_provider == config.model_provider
-            and user.ai_consent_disclosure_version == config.model_disclosure_version
-        )
-        rates_ready = model_rates_configured(config)
+        try:
+            provider = resolve_model_provider(config, schedule.provider_id, schedule.model)
+        except ModelProviderError:
+            provider = None
+        consented = provider is not None and has_consent(session, user, provider)
+        rates_ready = bool(provider and provider.rates_configured and provider.disclosure_ready)
         reserved_cost = (
-            model_cost_usd(
+            provider_cost(
+                provider,
                 _estimate_openai_input_tokens(items),
-                config.model_max_output_tokens,
-                config,
+                provider.max_output_tokens,
             )
-            if rates_ready
+            if rates_ready and provider is not None
             else None
         )
+        monthly = monthly_spend(session, user.id)
+        remaining = (
+            config.model_monthly_budget_usd - monthly
+            if config.model_monthly_budget_usd > 0
+            else (reserved_cost or 0)
+        )
         if (
-            provider_ready
+            provider is not None
             and consented
             and reserved_cost is not None
             and reserved_cost <= config.model_max_cost_per_call_usd
+            and reserved_cost <= remaining
             and config.processing_mode == "worker"
         ):
             draft["model"] = {
-                "provider": config.model_provider,
+                "provider": provider.id,
                 "status": "processing",
-                "model": config.openai_model,
+                "model": provider.model,
                 "prompt_version": PROMPT_VERSION,
                 "latency_ms": 0,
                 "input_tokens": 0,
                 "output_tokens": 0,
             }
-            rendered = _render_markdown(draft, items)
             review = Review(
                 owner_id=user.id,
                 period_start=start_at,
                 period_end=end_at,
                 status="processing",
                 draft_json=draft,
-                final_text=rendered,
+                final_text=None,
                 source_items=items,
             )
             session.add(review)
             session.flush()
+            draft["insights"] = build_review_insights(session, review)
+            review.draft_json = draft
+            review.final_text = _render_markdown(draft, items)
             job = enqueue_background_job(
                 session,
                 owner_id=user.id,
@@ -163,8 +179,8 @@ def _create_scheduled_review(
                 payload={
                     "review_id": review.id,
                     "prompt_version": PROMPT_VERSION,
-                    "provider": config.model_provider,
-                    "model": config.openai_model,
+                    "provider": provider.id,
+                    "model": provider.model,
                     "reserved_cost_usd": str(reserved_cost),
                 },
                 max_attempts=1,
@@ -173,38 +189,42 @@ def _create_scheduled_review(
                 **draft,
                 "model": {**draft["model"], "job_id": job.id},
             }
+            _snapshot_review(session, review, "generated")
             return review.id
 
-        if not provider_ready:
+        if provider is None:
             model_status = "provider_unconfigured"
         elif not consented:
             model_status = "consent_withdrawn"
-        elif reserved_cost is None or reserved_cost > config.model_max_cost_per_call_usd:
+        elif reserved_cost is None or reserved_cost > config.model_max_cost_per_call_usd or reserved_cost > remaining:
             model_status = "budget_fallback"
         else:
             model_status = "worker_required"
         draft["model"] = {
-            "provider": config.model_provider,
+            "provider": schedule.provider_id,
             "status": model_status,
-            "model": config.openai_model,
+            "model": schedule.model,
             "prompt_version": PROMPT_VERSION,
             "latency_ms": 0,
             "input_tokens": 0,
             "output_tokens": 0,
         }
 
-    rendered = _render_markdown(draft, items)
     review = Review(
         owner_id=user.id,
         period_start=start_at,
         period_end=end_at,
         status="draft",
         draft_json=draft,
-        final_text=rendered,
+        final_text=None,
         source_items=items,
     )
     session.add(review)
     session.flush()
+    draft["insights"] = build_review_insights(session, review)
+    review.draft_json = draft
+    review.final_text = _render_markdown(draft, items)
+    _snapshot_review(session, review, "generated")
     return review.id
 
 

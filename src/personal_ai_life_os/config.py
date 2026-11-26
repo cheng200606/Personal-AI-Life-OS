@@ -1,10 +1,11 @@
 """Typed application settings with production safety checks."""
 
+import json
 from decimal import Decimal
 from pathlib import Path
 from typing import Literal
 
-from pydantic import model_validator
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -31,6 +32,7 @@ class Settings(BaseSettings):
     access_token_secret: str = "development-only-change-this-secret"
     access_token_ttl_hours: int = 12
     registration_mode: Literal["open", "invitation", "closed"] = "open"
+    registration_rate_limit: int = Field(default=5, ge=1, le=1000)
     signup_invite_code: str | None = None
     metrics_token: str | None = None
 
@@ -64,6 +66,8 @@ class Settings(BaseSettings):
     graph_extraction_confidence_threshold: float = 0.75
     graph_extraction_max_items: int = 10
     graph_model_providers: str | None = None
+    model_providers: str | None = None
+    model_trust_env: bool = False
     insight_stale_days: int = 30
     insight_skill_min_evidence: int = 2
     insight_skill_stale_days: int = 90
@@ -115,6 +119,13 @@ class Settings(BaseSettings):
             or self.model_max_cost_per_call_usd <= 0
         ):
             raise ValueError("Production external model use requires current per-token pricing and a positive per-call budget.")
+        if self.model_providers:
+            try:
+                providers = json.loads(self.model_providers)
+            except json.JSONDecodeError as error:
+                raise ValueError("MODEL_PROVIDERS must be valid JSON.") from error
+            if not isinstance(providers, dict):
+                raise ValueError("MODEL_PROVIDERS must be a JSON object.")
         return self
 
 

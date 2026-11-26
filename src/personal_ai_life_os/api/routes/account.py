@@ -15,21 +15,26 @@ from personal_ai_life_os.api.deps import CurrentUserDep, DeletionUserDep, Sessio
 from personal_ai_life_os.models import (
     AgentAction,
     BackgroundJob,
+    Collection,
     EntityAlias,
     EntityMergeLog,
     GraphEntity,
     GraphEvidence,
     GraphRelation,
     InsightDismissal,
+    ModelConsent,
     ModelRun,
     PluginAuditLog,
     PluginManifest,
     QaThread,
     Reminder,
     Review,
+    ReviewVersion,
+    SavedSearch,
     SourceConnection,
     SourceItem,
     SyncRun,
+    Tag,
 )
 from personal_ai_life_os.services.jobs import cancel_all_jobs_for_owner
 from personal_ai_life_os.storage import ObjectStore
@@ -62,6 +67,17 @@ def download_archive(
         )
     )
     reviews = list(session.scalars(select(Review).where(Review.owner_id == user.id)))
+    review_versions = list(
+        session.scalars(
+            select(ReviewVersion)
+            .join(Review, Review.id == ReviewVersion.review_id)
+            .where(Review.owner_id == user.id)
+            .order_by(ReviewVersion.created_at, ReviewVersion.id)
+        )
+    )
+    model_consents = list(
+        session.scalars(select(ModelConsent).where(ModelConsent.owner_id == user.id))
+    )
     reminders = list(session.scalars(select(Reminder).where(Reminder.owner_id == user.id)))
     model_runs = list(session.scalars(select(ModelRun).where(ModelRun.owner_id == user.id)))
     jobs = list(
@@ -115,6 +131,19 @@ def download_archive(
             select(PluginAuditLog).where(PluginAuditLog.owner_id == user.id)
         )
     )
+    tags = list(session.scalars(select(Tag).where(Tag.owner_id == user.id).order_by(Tag.name_key, Tag.id)))
+    collections = list(
+        session.scalars(
+            select(Collection).where(Collection.owner_id == user.id).order_by(Collection.name_key, Collection.id)
+        )
+    )
+    saved_searches = list(
+        session.scalars(
+            select(SavedSearch)
+            .where(SavedSearch.owner_id == user.id)
+            .order_by(SavedSearch.created_at, SavedSearch.id)
+        )
+    )
     archive = BytesIO()
     missing_objects: list[str] = []
     with ZipFile(archive, "w", compression=ZIP_DEFLATED, compresslevel=6) as bundle:
@@ -152,7 +181,10 @@ def download_archive(
                         "file_sha256": run.file_sha256,
                         "items_seen": run.items_seen,
                         "items_created": run.items_created,
+                        "items_updated": run.items_updated,
                         "items_duplicate": run.items_duplicate,
+                        "items_removed": run.items_removed,
+                        "items_skipped": run.items_skipped,
                         "items_failed": run.items_failed,
                         "error_code": run.error_code,
                         "created_at": _iso(run.created_at),
@@ -184,6 +216,53 @@ def download_archive(
             ),
         )
         bundle.writestr(
+            "tags.json",
+            _json_bytes(
+                [
+                    {"id": tag.id, "name": tag.name, "color": tag.color, "created_at": _iso(tag.created_at), "updated_at": _iso(tag.updated_at)}
+                    for tag in tags
+                ]
+            ),
+        )
+        bundle.writestr(
+            "collections.json",
+            _json_bytes(
+                [
+                    {"id": collection.id, "name": collection.name, "description": collection.description, "created_at": _iso(collection.created_at), "updated_at": _iso(collection.updated_at)}
+                    for collection in collections
+                ]
+            ),
+        )
+        bundle.writestr(
+            "item-organization.json",
+            _json_bytes(
+                [
+                    {
+                        "item_id": item.id,
+                        "tag_ids": sorted(tag.id for tag in item.tags),
+                        "collection_ids": sorted(collection.id for collection in item.collections),
+                    }
+                    for item in items
+                ]
+            ),
+        )
+        bundle.writestr(
+            "saved-searches.json",
+            _json_bytes(
+                [
+                    {
+                        "id": entry.id,
+                        "name": entry.name,
+                        "query": entry.query,
+                        "filters": entry.filters_json,
+                        "created_at": _iso(entry.created_at),
+                        "updated_at": _iso(entry.updated_at),
+                    }
+                    for entry in saved_searches
+                ]
+            ),
+        )
+        bundle.writestr(
             "reviews.json",
             _json_bytes(
                 [
@@ -197,6 +276,38 @@ def download_archive(
                         "source_ids": [item.id for item in review.source_items if item.deleted_at is None],
                     }
                     for review in reviews
+                ]
+            ),
+        )
+        bundle.writestr(
+            "review-versions.json",
+            _json_bytes(
+                [
+                    {
+                        "id": version.id,
+                        "review_id": version.review_id,
+                        "version_number": version.version_number,
+                        "status": version.status,
+                        "draft": version.draft_json,
+                        "final_text": version.final_text,
+                        "reason": version.reason,
+                        "created_at": _iso(version.created_at),
+                    }
+                    for version in review_versions
+                ]
+            ),
+        )
+        bundle.writestr(
+            "model-consents.json",
+            _json_bytes(
+                [
+                    {
+                        "provider_id": consent.provider_id,
+                        "disclosure_version": consent.disclosure_version,
+                        "granted_at": _iso(consent.granted_at),
+                        "revoked_at": _iso(consent.revoked_at),
+                    }
+                    for consent in model_consents
                 ]
             ),
         )

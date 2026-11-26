@@ -3,6 +3,12 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { expect, test } from '@playwright/test'
 
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(window, 'showDirectoryPicker', { configurable: true, value: undefined })
+  })
+})
+
 test('selects, traces, reviews, exports and revokes synthetic content', async ({ page }) => {
   await page.goto('/')
   await page.keyboard.press('Tab')
@@ -263,4 +269,211 @@ test('enforces photo directory limits and reports partial imports', async ({ pag
   await submit.click()
   await expect(page.getByRole('alert')).toContainText('1 张照片无法导入：invalid.png')
   await expect(page.locator('.timeline-item')).toHaveCount(1)
+})
+
+function icsEvent(uid: string, sequence: number, summary: string, cancelled = false): string {
+  return [
+    'BEGIN:VEVENT',
+    `UID:${uid}`,
+    `SEQUENCE:${sequence}`,
+    ...(cancelled ? ['METHOD:CANCEL', 'STATUS:CANCELLED'] : [
+      'DTSTART;TZID=Asia/Shanghai:20261125T090000',
+      'DTEND;TZID=Asia/Shanghai:20261125T100000',
+      `SUMMARY:${summary}`,
+      'LOCATION:Room 42',
+    ]),
+    'END:VEVENT',
+  ].join('\r\n')
+}
+
+function icsCalendar(...events: string[]): Buffer {
+  return Buffer.from(['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Life OS//Browser//EN', ...events, 'END:VCALENDAR', ''].join('\r\n'))
+}
+
+test('previews, updates and cancels an ICS calendar through the web', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: '创建账号' }).click()
+  await page.getByLabel('邮箱').fill(`browser-calendar-${randomUUID()}@example.test`)
+  await page.getByLabel('密码').fill('synthetic-browser-password')
+  await page.getByRole('button', { name: '创建账号', exact: true }).click()
+  await expect(page.getByRole('heading', { name: '时间线' })).toBeVisible()
+
+  const input = page.locator('.file-drop input')
+  await input.setInputFiles({ name: 'calendar.ics', mimeType: 'text/calendar', buffer: icsCalendar(icsEvent('browser-event', 0, 'Calendar planning')) })
+  await expect(page.getByText('日历预览：1 个日程')).toBeVisible()
+  await page.getByRole('button', { name: '导入所选' }).click()
+  await expect(page.locator('.timeline-item')).toHaveCount(1)
+  await expect(page.getByRole('heading', { name: 'Calendar planning' })).toBeVisible()
+
+  await input.setInputFiles({ name: 'calendar.ics', mimeType: 'text/calendar', buffer: icsCalendar(icsEvent('browser-event', 1, 'Updated calendar planning')) })
+  await page.getByLabel('日历导入方式').selectOption({ label: '更新现有日历：calendar.ics（active）' })
+  await page.getByRole('button', { name: '导入所选' }).click()
+  await expect(page.getByRole('status')).toContainText('更新 1')
+  await expect(page.locator('.timeline-item')).toHaveCount(1)
+  await expect(page.getByRole('heading', { name: 'Updated calendar planning' })).toBeVisible()
+
+  await input.setInputFiles({ name: 'calendar.ics', mimeType: 'text/calendar', buffer: icsCalendar(icsEvent('browser-event', 2, 'Cancelled', true)) })
+  await page.getByLabel('日历导入方式').selectOption({ label: '更新现有日历：calendar.ics（active）' })
+  await page.getByRole('button', { name: '导入所选' }).click()
+  await expect(page.getByRole('status')).toContainText('撤销 1')
+  await expect(page.locator('.timeline-item')).toHaveCount(0)
+})
+
+test('creates, edits, searches, exports and deletes a quick note', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: '创建账号' }).click()
+  await page.getByLabel('邮箱').fill(`browser-note-${randomUUID()}@example.test`)
+  await page.getByLabel('密码').fill('synthetic-browser-password')
+  await page.getByRole('button', { name: '创建账号', exact: true }).click()
+  await expect(page.getByRole('heading', { name: '时间线' })).toBeVisible()
+
+  const panel = page.locator('.quick-note-panel')
+  await panel.getByLabel('标题（可选）').fill('M7 note')
+  await panel.getByLabel('正文').fill('Capture the release decision.')
+  await panel.getByRole('button', { name: '保存笔记' }).click()
+  await expect(page.locator('.timeline-item')).toHaveCount(1)
+  await expect(page.getByRole('heading', { name: 'M7 note' })).toBeVisible()
+
+  await page.getByRole('button', { name: '编辑笔记' }).click()
+  const editor = page.locator('.note-editor')
+  await editor.getByLabel('正文').fill('Capture and verify the M7 release decision.')
+  await editor.getByRole('button', { name: '保存修改' }).click()
+  await expect(page.getByText('Capture and verify the M7 release decision.', { exact: false })).toBeVisible()
+
+  await page.getByRole('button', { name: /搜索/ }).click()
+  await page.getByLabel('搜索时间线、复盘与提醒').fill('verify the M7')
+  await page.getByLabel('搜索时间线、复盘与提醒').press('Enter')
+  await expect(page.locator('.search-group').first()).toContainText('M7 note')
+
+  await page.getByRole('button', { name: /时间线/ }).click()
+  const download = page.waitForEvent('download')
+  await page.getByRole('button', { name: '导出 Markdown ↗' }).click()
+  expect(await readFile(await (await download).path(), 'utf8')).toContain('Capture and verify the M7 release decision.')
+
+  page.once('dialog', (dialog) => dialog.accept())
+  await page.getByRole('button', { name: '删除笔记' }).click()
+  await expect(page.locator('.timeline-item')).toHaveCount(0)
+  await expect(page.getByText('快速笔记已删除。')).toBeVisible()
+})
+
+test('filters unified search and saves a reusable query', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: '创建账号' }).click()
+  await page.getByLabel('邮箱').fill(`browser-m8-search-${randomUUID()}@example.test`)
+  await page.getByLabel('密码').fill('synthetic-browser-password')
+  await page.getByRole('button', { name: '创建账号', exact: true }).click()
+  await expect(page.getByRole('heading', { name: '时间线' })).toBeVisible()
+  await page.locator('.file-drop input').setInputFiles({ name: 'm8.md', mimeType: 'text/markdown', buffer: Buffer.from('# 2026-11-20 Harbor record\n\nAlpha release record.\n\n# 2026-11-22 Granite record\n\nBeta planning record.') })
+  await page.getByRole('button', { name: '导入所选' }).click()
+  await expect(page.locator('.timeline-item')).toHaveCount(2)
+
+  await page.getByRole('button', { name: /搜索/ }).click()
+  await page.getByLabel('搜索时间线、复盘与提醒').fill('record')
+  const filters = page.locator('.search-filter-grid')
+  await filters.getByLabel('从', { exact: true }).fill('2026-11-21')
+  await filters.getByLabel('至', { exact: true }).fill('2026-11-23')
+  await page.getByRole('button', { name: '搜索', exact: true }).click()
+  await expect(page.locator('.search-group').first()).toContainText('Granite record')
+  await expect(page.locator('.search-group').first()).not.toContainText('Harbor record')
+  await expect(page.getByText('sqlite-fts5-trigram', { exact: true })).toBeVisible()
+
+  await page.getByLabel('保存当前检索').fill('Recent records')
+  await page.getByRole('button', { name: '保存检索' }).click()
+  await expect(page.getByText('检索已保存。')).toBeVisible()
+  await page.getByLabel('搜索时间线、复盘与提醒').fill('different query')
+  await page.locator('.saved-search-row').first().getByRole('button', { name: /Recent records/ }).click()
+  await expect(page.getByLabel('搜索时间线、复盘与提醒')).toHaveValue('record')
+  await expect(page.locator('.search-group').first()).toContainText('Granite record')
+  page.once('dialog', (dialog) => dialog.accept())
+  await page.locator('.saved-search-row').first().getByRole('button', { name: '删除', exact: true }).click()
+  await expect(page.locator('.saved-search-row')).toHaveCount(0)
+})
+
+test('organizes an item with tags and collections and exports them', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: '创建账号' }).click()
+  await page.getByLabel('邮箱').fill(`browser-m8-organize-${randomUUID()}@example.test`)
+  await page.getByLabel('密码').fill('synthetic-browser-password')
+  await page.getByRole('button', { name: '创建账号', exact: true }).click()
+  await expect(page.getByRole('heading', { name: '时间线' })).toBeVisible()
+  await page.locator('.file-drop input').setInputFiles({ name: 'organized.md', mimeType: 'text/markdown', buffer: Buffer.from('# 2026-11-20 Organized note\n\nTagged needle content.') })
+  await page.getByRole('button', { name: '导入所选' }).click()
+  await expect(page.locator('.timeline-item')).toHaveCount(1)
+  await page.getByRole('button', { name: '整理', exact: true }).click()
+  await expect(page.getByRole('heading', { name: '整理', exact: true })).toBeVisible()
+
+  const catalog = page.locator('.organization-catalog')
+  await catalog.getByLabel('新标签').fill('Research')
+  await catalog.getByRole('button', { name: '添加标签' }).click()
+  await expect(catalog.getByText('Research', { exact: true })).toBeVisible()
+  await catalog.getByLabel('新集合').fill('Release notes')
+  await catalog.getByLabel('说明', { exact: true }).fill('M8 delivery')
+  await catalog.getByRole('button', { name: '添加集合' }).click()
+  await expect(catalog.getByText('Release notes', { exact: true })).toBeVisible()
+  await page.locator('.organization-checks').first().getByRole('checkbox').check()
+  await page.locator('.organization-checks').nth(1).getByRole('checkbox').check()
+  await page.getByRole('button', { name: '保存条目整理' }).click()
+  await expect(page.getByText('条目整理已保存。')).toBeVisible()
+
+  await page.getByRole('button', { name: /搜索/ }).click()
+  await page.getByLabel('搜索时间线、复盘与提醒').fill('needle')
+  await page.locator('.search-filter-grid').getByRole('combobox', { name: '标签', exact: true }).selectOption({ label: 'Research' })
+  await page.getByRole('button', { name: '搜索', exact: true }).click()
+  await expect(page.locator('.search-group').first()).toContainText('Organized note')
+
+  await page.getByRole('button', { name: /时间线/ }).click()
+  const download = page.waitForEvent('download')
+  await page.getByRole('button', { name: '导出 Markdown ↗' }).click()
+  const markdown = await readFile(await (await download).path(), 'utf8')
+  expect(markdown).toContain('tags:\n  - "Research"')
+  expect(markdown).toContain('collections:\n  - "Release notes"')
+
+  await page.getByRole('navigation', { name: 'Main navigation' }).getByRole('button', { name: /整理/ }).click()
+  const tagRow = catalog.locator('.organization-row').filter({ hasText: 'Research' })
+  await tagRow.getByRole('button', { name: '编辑', exact: true }).click()
+  await catalog.getByLabel('编辑标签名称').fill('Verified research')
+  await catalog.locator('.organization-edit').getByRole('button', { name: '保存', exact: true }).click()
+  await expect(catalog.getByText('Verified research', { exact: true })).toBeVisible()
+})
+
+test('manages provider consent, review insights, versions, and schedule model selection', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: '创建账号' }).click()
+  await page.getByLabel('邮箱').fill(`browser-m9-${randomUUID()}@example.test`)
+  await page.getByLabel('密码').fill('synthetic-browser-password')
+  await page.getByRole('button', { name: '创建账号', exact: true }).click()
+  await expect(page.getByRole('heading', { name: '时间线' })).toBeVisible()
+  await page.locator('.file-drop input').setInputFiles({ name: 'm9.md', mimeType: 'text/markdown', buffer: Buffer.from('# 2026-11-20 Release plan\n\n承诺在 2026-11-21 前完成发布。') })
+  await page.getByRole('button', { name: '导入所选' }).click()
+  await expect(page.locator('.timeline-item')).toHaveCount(1)
+
+  await page.getByRole('button', { name: /复盘/ }).click()
+  await page.locator('input[name=start]').fill('2026-11-19')
+  await page.locator('input[name=end]').fill('2026-11-22')
+  await page.getByRole('button', { name: '生成草稿' }).click()
+  await expect(page.getByText('承诺与到期日', { exact: true })).toBeVisible()
+  await page.getByPlaceholder(/编辑复盘/).fill('M9 verified reflection.')
+  await page.getByRole('button', { name: '确认并保存' }).click()
+  await expect(page.getByText('CONFIRMED', { exact: true })).toBeVisible()
+  await page.getByText(/版本对比 · 当前 v2/).click()
+  await expect(page.locator('.version-diff')).toContainText('M9 verified reflection.')
+
+  await page.getByRole('button', { name: /设置/ }).click()
+  const research = page.locator('.provider-row').filter({ hasText: 'research · model-b' })
+  await research.getByRole('checkbox', { name: '已阅读上述说明' }).check()
+  await research.getByRole('button', { name: '同意并启用' }).click()
+  await expect(research.getByText('状态：已同意', { exact: true })).toBeVisible()
+
+  await page.getByRole('button', { name: /复盘/ }).click()
+  const schedule = page.locator('.schedule-panel')
+  await schedule.getByRole('checkbox', { name: '启用自动周复盘' }).check()
+  await schedule.getByRole('checkbox', { name: '有可用模型时使用外部 AI' }).check()
+  await schedule.getByRole('combobox', { name: '提供方', exact: true }).selectOption('research')
+  await schedule.getByRole('combobox', { name: '模型', exact: true }).selectOption('model-b-mini')
+  await schedule.getByRole('button', { name: '保存计划' }).click()
+  await expect(page.getByText('周复盘计划已保存。')).toBeVisible()
+
+  await page.getByRole('button', { name: /设置/ }).click()
+  await page.getByRole('combobox', { name: '周期', exact: true }).selectOption('week')
+  await expect(page.getByText(/失败预留/)).toBeVisible()
 })

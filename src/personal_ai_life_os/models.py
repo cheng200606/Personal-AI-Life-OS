@@ -61,6 +61,22 @@ reminder_records = Table(
     Column("memory_record_id", Uuid(as_uuid=False), ForeignKey("memory_records.id", ondelete="CASCADE"), primary_key=True),
 )
 
+item_tags = Table(
+    "item_tags",
+    Base.metadata,
+    Column("item_id", Uuid(as_uuid=False), ForeignKey("source_items.id", ondelete="CASCADE"), primary_key=True),
+    Column("tag_id", Uuid(as_uuid=False), ForeignKey("tags.id", ondelete="CASCADE"), primary_key=True),
+    Index("ix_item_tags_tag_item", "tag_id", "item_id"),
+)
+
+item_collections = Table(
+    "item_collections",
+    Base.metadata,
+    Column("item_id", Uuid(as_uuid=False), ForeignKey("source_items.id", ondelete="CASCADE"), primary_key=True),
+    Column("collection_id", Uuid(as_uuid=False), ForeignKey("collections.id", ondelete="CASCADE"), primary_key=True),
+    Index("ix_item_collections_collection_item", "collection_id", "item_id"),
+)
+
 
 class User(Base):
     __tablename__ = "users"
@@ -78,6 +94,27 @@ class User(Base):
     sources: Mapped[list["SourceConnection"]] = relationship(
         back_populates="owner", cascade="all, delete-orphan"
     )
+    model_consents: Mapped[list["ModelConsent"]] = relationship(
+        back_populates="owner", cascade="all, delete-orphan"
+    )
+
+
+class ModelConsent(Base):
+    __tablename__ = "model_consents"
+    __table_args__ = (
+        UniqueConstraint("owner_id", "provider_id", name="uq_model_consent_owner_provider"),
+        Index("ix_model_consents_owner_provider", "owner_id", "provider_id"),
+    )
+
+    id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=new_id)
+    owner_id: Mapped[str] = mapped_column(
+        Uuid(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    provider_id: Mapped[str] = mapped_column(String(80))
+    disclosure_version: Mapped[str] = mapped_column(String(120))
+    granted_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
+    owner: Mapped[User] = relationship(back_populates="model_consents")
 
 
 class SourceConnection(Base):
@@ -127,7 +164,10 @@ class SyncRun(Base):
     object_key: Mapped[str | None] = mapped_column(String(600), nullable=True)
     items_seen: Mapped[int] = mapped_column(Integer, default=0)
     items_created: Mapped[int] = mapped_column(Integer, default=0)
+    items_updated: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     items_duplicate: Mapped[int] = mapped_column(Integer, default=0)
+    items_removed: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    items_skipped: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     items_failed: Mapped[int] = mapped_column(Integer, default=0)
     error_code: Mapped[str | None] = mapped_column(String(80), nullable=True)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
@@ -182,6 +222,69 @@ class SourceItem(Base):
     reminders: Mapped[list["Reminder"]] = relationship(
         secondary=reminder_sources, back_populates="source_items"
     )
+    tags: Mapped[list["Tag"]] = relationship(
+        secondary=item_tags, back_populates="items"
+    )
+    collections: Mapped[list["Collection"]] = relationship(
+        secondary=item_collections, back_populates="items"
+    )
+
+
+class Tag(Base):
+    __tablename__ = "tags"
+    __table_args__ = (
+        UniqueConstraint("owner_id", "name_key", name="uq_tag_owner_name"),
+        Index("ix_tags_owner_name", "owner_id", "name_key"),
+    )
+
+    id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=new_id)
+    owner_id: Mapped[str] = mapped_column(
+        Uuid(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    name: Mapped[str] = mapped_column(String(80))
+    name_key: Mapped[str] = mapped_column(String(200))
+    color: Mapped[str | None] = mapped_column(String(7), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow, onupdate=utcnow)
+    items: Mapped[list[SourceItem]] = relationship(secondary=item_tags, back_populates="tags")
+
+
+class Collection(Base):
+    __tablename__ = "collections"
+    __table_args__ = (
+        UniqueConstraint("owner_id", "name_key", name="uq_collection_owner_name"),
+        Index("ix_collections_owner_name", "owner_id", "name_key"),
+    )
+
+    id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=new_id)
+    owner_id: Mapped[str] = mapped_column(
+        Uuid(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    name: Mapped[str] = mapped_column(String(120))
+    name_key: Mapped[str] = mapped_column(String(200))
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow, onupdate=utcnow)
+    items: Mapped[list[SourceItem]] = relationship(secondary=item_collections, back_populates="collections")
+
+
+class SavedSearch(Base):
+    __tablename__ = "saved_searches"
+    __table_args__ = (
+        UniqueConstraint("owner_id", "name_key", name="uq_saved_search_owner_name"),
+        Index("ix_saved_searches_owner_created", "owner_id", "created_at"),
+    )
+
+    id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=new_id)
+    owner_id: Mapped[str] = mapped_column(
+        Uuid(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    name: Mapped[str] = mapped_column(String(120))
+    name_key: Mapped[str] = mapped_column(String(200))
+    query: Mapped[str] = mapped_column(String(200))
+    filters_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow, onupdate=utcnow)
 
 
 class MemoryRecord(Base):
@@ -222,6 +325,29 @@ class Review(Base):
     source_items: Mapped[list[SourceItem]] = relationship(
         secondary=review_sources, back_populates="reviews"
     )
+    versions: Mapped[list["ReviewVersion"]] = relationship(
+        back_populates="review", cascade="all, delete-orphan"
+    )
+
+
+class ReviewVersion(Base):
+    __tablename__ = "review_versions"
+    __table_args__ = (
+        UniqueConstraint("review_id", "version_number", name="uq_review_version_number"),
+        Index("ix_review_versions_review_created", "review_id", "created_at"),
+    )
+
+    id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=new_id)
+    review_id: Mapped[str] = mapped_column(
+        Uuid(as_uuid=False), ForeignKey("reviews.id", ondelete="CASCADE"), index=True
+    )
+    version_number: Mapped[int] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(String(24))
+    draft_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    final_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    reason: Mapped[str] = mapped_column(String(40))
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
+    review: Mapped[Review] = relationship(back_populates="versions")
 
 
 class ReviewSchedule(Base):
@@ -241,6 +367,8 @@ class ReviewSchedule(Base):
     local_minute: Mapped[int] = mapped_column(Integer, default=0)
     timezone: Mapped[str] = mapped_column(String(64), default="UTC")
     use_external_model: Mapped[bool] = mapped_column(Boolean, default=False)
+    provider_id: Mapped[str] = mapped_column(String(80), default="default", server_default="default")
+    model: Mapped[str | None] = mapped_column(String(160), nullable=True)
     last_run_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
     next_run_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
     last_review_id: Mapped[str | None] = mapped_column(

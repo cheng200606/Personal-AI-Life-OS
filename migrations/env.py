@@ -13,6 +13,16 @@ config.set_main_option("sqlalchemy.url", settings.database_url.replace("%", "%%"
 target_metadata = Base.metadata
 
 
+def include_object(obj, name, type_, reflected, compare_to) -> bool:
+    return not (
+        (type_ == "table" and (
+            name in {"timeline_fts", "review_fts", "reminder_fts"}
+            or name.startswith(("timeline_fts_", "review_fts_", "reminder_fts_"))
+        ))
+        or (type_ == "index" and name.endswith("_trgm"))
+    )
+
+
 def run_migrations_offline() -> None:
     context.configure(
         url=settings.database_url,
@@ -20,6 +30,7 @@ def run_migrations_offline() -> None:
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
         compare_type=True,
+        include_object=include_object,
     )
     with context.begin_transaction():
         context.run_migrations()
@@ -33,6 +44,7 @@ def run_migrations_online() -> None:
                 connection=connection,
                 target_metadata=target_metadata,
                 compare_type=True,
+                include_object=include_object,
             )
             with context.begin_transaction():
                 context.run_migrations()

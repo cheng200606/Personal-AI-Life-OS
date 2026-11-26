@@ -8,13 +8,27 @@ from dataclasses import dataclass, replace
 from datetime import UTC, datetime, time
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import select, update
+from sqlalchemy import Uuid, literal, select, update
 from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session
 
-from personal_ai_life_os.models import SourceConnection, SourceItem, SyncRun, new_id
+from personal_ai_life_os.models import (
+    SourceConnection,
+    SourceItem,
+    SyncRun,
+    item_collections,
+    item_tags,
+    new_id,
+)
 from personal_ai_life_os.parsers.base import ParsedItem
+from personal_ai_life_os.parsers.calendar_ics import (
+    PARSER_VERSION as CALENDAR_PARSER_VERSION,
+)
+from personal_ai_life_os.parsers.calendar_ics import (
+    UnsupportedCalendarError,
+    parse_calendar,
+)
 from personal_ai_life_os.parsers.chatgpt_export import (
     PARSER_VERSION as CHATGPT_PARSER_VERSION,
 )
@@ -50,6 +64,12 @@ from personal_ai_life_os.parsers.photo import (
     UnsupportedPhotoError,
     process_photo,
 )
+from personal_ai_life_os.services.deletion import (
+    complete_item_deletion,
+    request_item_deletions,
+    scrub_item_derivatives,
+)
+from personal_ai_life_os.services.graph_evidence import mark_item_evidence_unavailable
 from personal_ai_life_os.services.jobs import enqueue_background_job
 from personal_ai_life_os.storage import ObjectStore
 
@@ -140,6 +160,14 @@ def _parser_for(
         except UnsupportedExportError as error:
             raise IngestionFailure("unsupported_export", str(error)) from error
         return items, CHATGPT_PARSER_VERSION, minimized_payload, "application/json"
+    if source.kind == "calendar_ics":
+        if not filename.lower().endswith(".ics"):
+            raise IngestionFailure("unsupported_file_type", "Select an iCalendar file ending in .ics.")
+        try:
+            preview = parse_calendar(payload, user_timezone=user_timezone)
+        except UnsupportedCalendarError as error:
+            raise IngestionFailure("unsupported_calendar", str(error)) from error
+        return list(preview.items), CALENDAR_PARSER_VERSION, payload, "text/calendar"
     if source.kind == "photo":
         try:
             processed = process_photo(
@@ -172,6 +200,167 @@ def _insert_source_item(session: Session, values: dict) -> bool:
     return result.rowcount == 1
 
 
+def _record_hash(parsed: ParsedItem) -> str:
+    return hashlib.sha256(
+        json.dumps(
+            {
+                "external_id": parsed.external_id,
+                "kind": parsed.kind,
+                "title": parsed.title,
+                "content_text": parsed.content_text,
+                "occurred_at": parsed.occurred_at.isoformat() if parsed.occurred_at else None,
+                "source_locator": parsed.source_locator,
+                "metadata": parsed.metadata,
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).hexdigest()
+
+
+def _copy_item_organization(session: Session, old_item_id: str, new_item_id: str) -> None:
+    for table, column_name in ((item_tags, "tag_id"), (item_collections, "collection_id")):
+        session.execute(
+            table.insert().from_select(
+                ["item_id", column_name],
+                select(literal(new_item_id, type_=Uuid(as_uuid=False)), table.c[column_name]).where(table.c.item_id == old_item_id),
+            )
+        )
+
+
+def _persist_calendar_items(
+    *,
+    session: Session,
+    source: SourceConnection,
+    owner_id: str,
+    run: SyncRun,
+    parsed_items: list[ParsedItem],
+    stored_hash: str,
+    object_key: str,
+    parser_version: str,
+    store: ObjectStore,
+) -> tuple[list[SourceItem], dict | None]:
+    current_items = list(
+        session.scalars(
+            select(SourceItem).where(
+                SourceItem.owner_id == owner_id,
+                SourceItem.source_id == source.id,
+                SourceItem.is_current.is_(True),
+                SourceItem.deleted_at.is_(None),
+            )
+        )
+    )
+    by_external_id = {item.external_id: item for item in current_items}
+    snapshot_ids = {item.external_id for item in parsed_items}
+    cancelled_ids = {
+        by_external_id[item.external_id].id
+        for item in parsed_items
+        if item.metadata.get("ics_status") == "cancelled"
+        and not item.metadata.get("ics_unsupported_recurrence")
+        and item.external_id in by_external_id
+        and int(item.metadata.get("ics_sequence", 0))
+        >= int((by_external_id[item.external_id].metadata_json or {}).get("ics_sequence", -1))
+    }
+    missing_ids = {
+        item.id for external_id, item in by_external_id.items() if external_id not in snapshot_ids
+    }
+    deletion_document = None
+    removal_candidates = cancelled_ids | missing_ids
+    if removal_candidates:
+        deletion_document = request_item_deletions(
+            store,
+            owner_id,
+            removal_candidates,
+            tombstone_id=run.id,
+        )
+    removed_ids: set[str] = set()
+    persisted: list[SourceItem] = []
+
+    for parsed in parsed_items:
+        if parsed.metadata.get("ics_unsupported_recurrence"):
+            run.items_skipped += 1
+            continue
+        existing = by_external_id.get(parsed.external_id)
+        sequence = int(parsed.metadata.get("ics_sequence", 0))
+        existing_sequence = int((existing.metadata_json or {}).get("ics_sequence", -1)) if existing else -1
+        if existing is not None and sequence < existing_sequence:
+            run.items_skipped += 1
+            continue
+        if parsed.metadata.get("ics_status") == "cancelled":
+            if existing is not None:
+                existing.is_current = False
+                existing.deleted_at = datetime.now(UTC)
+                removed_ids.add(existing.id)
+                run.items_removed += 1
+            else:
+                run.items_skipped += 1
+            continue
+
+        record_hash = _record_hash(parsed)
+        existing_digest = (existing.metadata_json or {}).get("content_digest") if existing else None
+        if existing is not None and existing_digest == record_hash:
+            run.items_duplicate += 1
+            persisted.append(existing)
+            continue
+
+        metadata = {
+            **parsed.metadata,
+            "content_digest": record_hash,
+            "snapshot_id": run.file_sha256,
+            "content_type": "text/calendar",
+        }
+        values = {
+            "id": new_id(),
+            "owner_id": owner_id,
+            "source_id": source.id,
+            "sync_run_id": run.id,
+            "external_id": parsed.external_id,
+            "kind": parsed.kind,
+            "title": parsed.title[:500],
+            "content_text": parsed.content_text,
+            "occurred_at": parsed.occurred_at,
+            "source_timezone": parsed.source_timezone,
+            "source_sha256": hashlib.sha256(f"{record_hash}:{run.id}".encode("ascii")).hexdigest(),
+            "stored_sha256": stored_hash,
+            "parser_version": parser_version,
+            "object_key": object_key,
+            "source_locator": parsed.source_locator,
+            "metadata_json": metadata,
+            "is_current": True,
+        }
+        if existing is not None:
+            existing.is_current = False
+        if _insert_source_item(session, values):
+            item = session.get(SourceItem, values["id"])
+            if item is not None:
+                if existing is not None:
+                    _copy_item_organization(session, existing.id, item.id)
+                persisted.append(item)
+            if existing is not None:
+                run.items_updated += 1
+            else:
+                run.items_created += 1
+        else:
+            run.items_skipped += 1
+
+    for external_id, existing in by_external_id.items():
+        if external_id not in snapshot_ids and existing.is_current and existing.deleted_at is None:
+            existing.is_current = False
+            existing.deleted_at = datetime.now(UTC)
+            removed_ids.add(existing.id)
+            run.items_removed += 1
+    if removed_ids:
+        scrub_item_derivatives(session, owner_id, removed_ids, commit=False)
+        mark_item_evidence_unavailable(
+            session,
+            owner_id=owner_id,
+            item_ids=removed_ids,
+            availability="deleted",
+        )
+    return persisted, deletion_document
+
+
 def ingest_file(
     *,
     session: Session,
@@ -189,6 +378,15 @@ def ingest_file(
 ) -> tuple[SyncRun, list[SourceItem]]:
     if source.owner_id != owner_id:
         raise IngestionFailure("source_not_found", "The selected source was not found.", 404)
+    if source.kind == "calendar_ics":
+        locked_source = session.execute(
+            select(SourceConnection)
+            .where(SourceConnection.id == source.id, SourceConnection.owner_id == owner_id)
+            .with_for_update()
+        ).scalar_one_or_none()
+        if locked_source is None:
+            raise IngestionFailure("source_not_found", "The selected source was not found.", 404)
+        source = locked_source
     if source.status != "active":
         raise IngestionFailure("source_not_active", "Resume this source before importing.", 409)
 
@@ -223,72 +421,81 @@ def ingest_file(
         store.put(object_key, stored_payload, stored_content_type or "application/octet-stream")
         run.object_key = object_key
         persisted: list[SourceItem] = []
+        deletion_document: dict | None = None
 
-        for parsed in parsed_items:
-            record_hash = hashlib.sha256(
-                json.dumps(
-                    {
-                        "external_id": parsed.external_id,
-                        "kind": parsed.kind,
-                        "title": parsed.title,
-                        "content_text": parsed.content_text,
-                        "occurred_at": parsed.occurred_at.isoformat() if parsed.occurred_at else None,
-                        "source_locator": parsed.source_locator,
-                        "metadata": parsed.metadata,
-                    },
-                    ensure_ascii=False,
-                    sort_keys=True,
-                    separators=(",", ":"),
-                ).encode("utf-8")
-            ).hexdigest()
-            session.execute(
-                update(SourceItem)
-                .where(
-                    SourceItem.owner_id == owner_id,
-                    SourceItem.source_id == source.id,
-                    SourceItem.external_id == parsed.external_id,
-                    SourceItem.is_current.is_(True),
-                    SourceItem.source_sha256 != record_hash,
-                )
-                .values(is_current=False)
+        if source.kind == "calendar_ics":
+            persisted, deletion_document = _persist_calendar_items(
+                session=session,
+                source=source,
+                owner_id=owner_id,
+                run=run,
+                parsed_items=parsed_items,
+                stored_hash=stored_hash,
+                object_key=object_key,
+                parser_version=parser_version,
+                store=store,
             )
-            item_id = new_id()
-            values = {
-                "id": item_id,
-                "owner_id": owner_id,
-                "source_id": source.id,
-                "sync_run_id": run.id,
-                "external_id": parsed.external_id,
-                "kind": parsed.kind,
-                "title": parsed.title[:500],
-                "content_text": parsed.content_text,
-                "occurred_at": parsed.occurred_at,
-                "source_timezone": parsed.source_timezone,
-                "source_sha256": record_hash,
-                "stored_sha256": stored_hash,
-                "parser_version": parser_version,
-                "object_key": object_key,
-                "source_locator": parsed.source_locator,
-                "metadata_json": {**parsed.metadata, "content_type": parsed.metadata.get("media_type", stored_content_type)},
-                "is_current": True,
-            }
-            if _insert_source_item(session, values):
-                run.items_created += 1
-                item = session.get(SourceItem, item_id)
-                if item is not None:
-                    persisted.append(item)
-            else:
-                run.items_duplicate += 1
-                existing = session.scalar(
+        else:
+            for parsed in parsed_items:
+                record_hash = _record_hash(parsed)
+                existing_current = session.scalar(
                     select(SourceItem).where(
                         SourceItem.owner_id == owner_id,
                         SourceItem.source_id == source.id,
                         SourceItem.external_id == parsed.external_id,
-                        SourceItem.source_sha256 == record_hash,
+                        SourceItem.is_current.is_(True),
                     )
                 )
-                if existing is not None:
-                    persisted.append(existing)
+                session.execute(
+                    update(SourceItem)
+                    .where(
+                        SourceItem.owner_id == owner_id,
+                        SourceItem.source_id == source.id,
+                        SourceItem.external_id == parsed.external_id,
+                        SourceItem.is_current.is_(True),
+                        SourceItem.source_sha256 != record_hash,
+                    )
+                    .values(is_current=False)
+                )
+                item_id = new_id()
+                values = {
+                    "id": item_id,
+                    "owner_id": owner_id,
+                    "source_id": source.id,
+                    "sync_run_id": run.id,
+                    "external_id": parsed.external_id,
+                    "kind": parsed.kind,
+                    "title": parsed.title[:500],
+                    "content_text": parsed.content_text,
+                    "occurred_at": parsed.occurred_at,
+                    "source_timezone": parsed.source_timezone,
+                    "source_sha256": record_hash,
+                    "stored_sha256": stored_hash,
+                    "parser_version": parser_version,
+                    "object_key": object_key,
+                    "source_locator": parsed.source_locator,
+                    "metadata_json": {**parsed.metadata, "content_type": parsed.metadata.get("media_type", stored_content_type)},
+                    "is_current": True,
+                }
+                if _insert_source_item(session, values):
+                    run.items_created += 1
+                    item = session.get(SourceItem, item_id)
+                    if item is not None:
+                        if existing_current is not None:
+                            _copy_item_organization(session, existing_current.id, item.id)
+                        persisted.append(item)
+                else:
+                    run.items_duplicate += 1
+                    existing = session.scalar(
+                        select(SourceItem).where(
+                            SourceItem.owner_id == owner_id,
+                            SourceItem.source_id == source.id,
+                            SourceItem.external_id == parsed.external_id,
+                            SourceItem.source_sha256 == record_hash,
+                        )
+                    )
+                    if existing is not None:
+                        persisted.append(existing)
 
         pending_ocr_items = [
             item
@@ -316,6 +523,11 @@ def ingest_file(
             source.last_sync_at = run.completed_at
         session.commit()
         session.refresh(run)
+        if deletion_document is not None:
+            try:
+                complete_item_deletion(store, owner_id, deletion_document)
+            except Exception as cleanup_error:  # noqa: BLE001 - startup replays the durable request.
+                logger.warning("Failed to complete item deletion journal: %s", type(cleanup_error).__name__)
         return run, persisted
     except IngestionFailure as error:
         session.rollback()

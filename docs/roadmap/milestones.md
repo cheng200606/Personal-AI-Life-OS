@@ -69,6 +69,47 @@ This status reflects repository implementation and local checks. It does not mea
 - `scripts/evaluate_graph_qa.py` runs 30 bilingual synthetic cases across four question types plus revoked and deleted evidence. The latest run reports citation accuracy 1.0, 0 unsupported claims, and about 20–30 ms P95 on local SQLite.
 - **Boundaries:** extraction is still API-triggered rather than fully automatic; Q&A uses keyword and rule retrieval rather than semantic/vector search; plugin safety is permission declaration plus audit, not a strong sandbox; no multi-device sync, mobile, desktop package, OCR of scanned PDFs, or model-written answers.
 
+## M7 — Connectors and quick capture: implemented
+
+- `calendar_ics` accepts a bounded UTF-8 ICS complete snapshot through the web importer. The parser normalizes UTC/IANA, all-day, and floating times, preserves UID/TZID/location/description, and reports unsupported recurrence properties.
+- Ingestion uses UID as stable identity and SEQUENCE as monotonic version. Re-import is idempotent, newer versions supersede prior current rows, lower sequences are skipped, and cancellation or disappearance from a complete snapshot soft-removes the affected event.
+- Web preview shows event/recurrence counts and can update an existing calendar source instead of creating a duplicate source.
+- Quick notes use owner-scoped `SourceItem(kind="quick_note")` under a hidden internal source. `POST/PATCH/DELETE /api/v1/quick-notes` supports create, edit, and item-scoped deletion; notes flow through timeline, search, dated reviews, Markdown export, and account archive.
+- Item-level deletion batches extend the existing independent tombstone journal. Startup replay covers quick-note deletion and ICS reconciliation so a database restore cannot resurrect removed content.
+- Migration `e8c4f2a7b913` adds created/updated/duplicate/removed/skipped/failed reconciliation counts to `SyncRun`.
+- Verification: Ruff and 117 Python tests pass; web lint/build and seven Playwright workflows pass, including ICS preview/update/cancel and quick-note create/edit/search/export/delete.
+- **Boundaries:** no RRULE/RDATE/EXDATE/RECURRENCE-ID expansion, CalDAV/API sync, URL/attachment fetching, partial snapshots, semantic search, mobile capture, or desktop package. PostgreSQL reconciliation is protected by a source-row lock but this round's automated evidence is local SQLite.
+
+## M8 — Search quality and knowledge organization: implemented
+
+- SQLite uses FTS5 trigram candidate tables with synchronization triggers; PostgreSQL conditionally installs `pg_trgm` and creates GIN indexes. Missing extensions, privileges, or FTS5 support fall back to `LIKE`, and short queries use `LIKE`.
+- Every candidate is rejoined with authoritative rows and rechecked for owner, current version, deletion, source status, and filters. `scripts/rebuild_search_index.py` rebuilds SQLite candidates from current records.
+- Unified search adds result-type, user-timezone date, source, status, tag, and collection filters. Saved searches persist the query and full filter object with owner-scoped CRUD.
+- Tags and collections use casefold-unique owner-scoped names, optional colors/descriptions, and validated many-to-many item associations. Deleting organization metadata removes links, not items.
+- The Chinese Organize page manages tags/collections and item associations; search pages expose filters and saved searches. Markdown export and account archive include organization metadata.
+- The expanded 31-query bilingual evaluation reports hit@5 1.0 for indexed and baseline search. Indexed P95 is 93.85 ms on SQLite and 62.55 ms on PostgreSQL 16 against a 500 ms target; deleted-item exclusion passes on both.
+- PostgreSQL 16 migration upgrade, downgrade/re-upgrade, `alembic check`, extension installation, and all five GIN indexes pass. Full Python suite: 121 passed; browser suite: 9 passed.
+
+## M9 — Review intelligence and model selection: implemented
+
+- Environment-backed provider/model registry with named OpenAI-compatible endpoints, model lists, token prices, disclosure text, optional loopback local providers, and opt-in proxy environment support. API keys are excluded from database records, registry responses, archives, and logs.
+- `ModelConsent` isolates consent by owner/provider/disclosure version. Manual and scheduled reviews persist provider/model selection; inline and worker paths re-resolve configuration and recheck consent, credentials, pricing, per-call limit, and remaining monthly budget.
+- Provider-scoped consent revocation cancels only matching queued/running jobs. The legacy default consent endpoint remains compatible with existing photo-description and review clients.
+- Deterministic review insights add cross-period topic trends, commitment/due-date extraction, and active goal associations with source-item references. `ReviewVersion` stores immutable snapshots and the API/UI expose read-only comparisons.
+- Model facts are rechecked against cited text before drafts are accepted. Usage summaries support day/week/month periods plus provider/purpose costs, token counts, latency, and failure reserves; archives include consent and version metadata.
+- Fixed 30-case evaluation supports multiple configured providers and a deterministic loopback baseline. MiniMax and the local baseline both report citation accuracy 1.0, fact support 1.0, zero unsupported claims, and passing latency; MiniMax P95 is 6484 ms with estimated cost $0.00583950.
+- Migration `a1b7c9d3e504` passes SQLite and PostgreSQL 16 upgrade, downgrade/re-upgrade, and `alembic check`. Full Python suite: 126 passed; browser suite: 10 passed.
+- **Boundaries:** no provider credential administration UI, automatic local-model installation, cross-provider consent inheritance, or model fine-tuning. Local endpoints must be loopback and still require configured pricing for budget enforcement.
+
+## M10 — Obsidian export and mobile capture: implemented
+
+- Web export publishes stable `lifeos_id`, title/type/source/date, tag/collection, and export-time frontmatter for timeline items, quick notes, and weekly reviews. Item exports retain source locators; review exports retain period, status, and version metadata. Empty lists are YAML arrays.
+- Supported Chromium browsers use File System Access API after an explicit user action to select an Obsidian Vault directory. The server never receives the path. Conflicts default to keep, copy adds numeric suffixes, overwrite requires explicit selection, and unsupported or denied access falls back to download without overwriting.
+- The production PWA includes a standalone manifest, 192/512 icons, `/capture` shortcut, offline application shell, and text/title/URL share target. The service worker never caches API responses, tokens, source objects, or model output; shared text is deleted from the browser inbox after the capture page reads it.
+- The 390×844 capture flow reuses owner-scoped quick notes and shows recent records. Due reminders remain visible in mobile navigation, capture, and review layouts. Browser notifications require explicit permission, emit at most once per due-reminder set while the app is open, and fail without blocking in-app reminders.
+- Verification: Ruff and 126 Python tests pass; Web lint/build and all 18 Edge Playwright workflows pass. The 8 M10-specific tests cover frontmatter, filename sanitization, keep/copy/overwrite, manual-edit preservation, permission fallback, mobile capture, real service-worker sharing/inbox cleanup, no API caching, and denied notifications. A production-preview smoke confirmed an active service worker, two precached JS/CSS assets, no API cache entries, and offline `/capture` reload with zero console errors at 390×844. Obsidian 1.15.1 opened the exported file and rendered tag/collection properties and body text; a manual edit was confirmed on disk.
+- **Boundaries:** File System Access API is Chromium-oriented; no two-way sync, server-side Vault access, offline write queue, background push service, native mobile package, or shared-file/media capture. Same-origin Vault writes are serialized, but the browser API has no atomic no-replace primitive against an external editor race; close an open note before re-export. PWA installation and sharing require a secure context and the production Web build.
+
 ## Release and follow-up
 
 Use the [release checklist](../operations/release-checklist.md) and [support matrix](../operations/support-matrix.md) to review evidence and limits. Invite users only after hosted acceptance checks and recovery exercises have actually passed. Additional connectors, full-text/vector search, email or push delivery, and mobile capture remain post-MVP.

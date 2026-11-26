@@ -22,6 +22,8 @@ def _response(schedule: ReviewSchedule) -> ReviewScheduleResponse:
         local_minute=schedule.local_minute,
         timezone=schedule.timezone,
         use_external_model=schedule.use_external_model,
+        provider_id=schedule.provider_id,
+        model=schedule.model,
         last_run_at=schedule.last_run_at,
         next_run_at=schedule.next_run_at,
         last_review_id=schedule.last_review_id,
@@ -36,6 +38,8 @@ def _default(user_timezone: str) -> ReviewScheduleResponse:
         local_minute=0,
         timezone=user_timezone,
         use_external_model=False,
+        provider_id="default",
+        model=None,
         last_run_at=None,
         next_run_at=None,
         last_review_id=None,
@@ -68,6 +72,8 @@ def update_review_schedule(
     schedule.local_minute = payload.local_minute
     schedule.timezone = payload.timezone
     schedule.use_external_model = payload.use_external_model
+    schedule.provider_id = payload.provider_id or "default"
+    schedule.model = payload.model
     schedule.next_run_at = (
         compute_next_run(
             utcnow(),
