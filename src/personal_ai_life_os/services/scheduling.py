@@ -21,7 +21,7 @@ from personal_ai_life_os.models import (
 )
 from personal_ai_life_os.services.graph_extraction import monthly_spend
 from personal_ai_life_os.services.jobs import enqueue_background_job
-from personal_ai_life_os.services.model_consent import has_consent
+from personal_ai_life_os.services.model_consent import desktop_source_authorized, has_consent
 from personal_ai_life_os.services.model_providers import (
     ModelProviderError,
     provider_cost,
@@ -122,7 +122,10 @@ def _create_scheduled_review(
             provider = resolve_model_provider(config, schedule.provider_id, schedule.model)
         except ModelProviderError:
             provider = None
-        consented = provider is not None and has_consent(session, user, provider)
+        consented = (
+            provider is not None and has_consent(session, user, provider)
+            and all(desktop_source_authorized(item.source, config) for item in items)
+        )
         rates_ready = bool(provider and provider.rates_configured and provider.disclosure_ready)
         reserved_cost = (
             provider_cost(
@@ -136,7 +139,7 @@ def _create_scheduled_review(
         monthly = monthly_spend(session, user.id)
         remaining = (
             config.model_monthly_budget_usd - monthly
-            if config.model_monthly_budget_usd > 0
+            if config.model_monthly_budget_usd > 0 or config.app_env == "desktop"
             else (reserved_cost or 0)
         )
         if (

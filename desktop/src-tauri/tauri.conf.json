@@ -1,0 +1,29 @@
+{
+  "productName": "Personal AI Life OS",
+  "version": "0.1.0",
+  "identifier": "org.personalailifeos.desktop",
+  "build": {
+    "beforeBuildCommand": { "script": "npm.cmd --prefix web run build", "cwd": "../.." },
+    "frontendDist": "../../web/dist"
+  },
+  "app": {
+    "windows": [{
+      "label": "main",
+      "title": "Personal AI Life OS",
+      "width": 1280,
+      "height": 840,
+      "minWidth": 760,
+      "minHeight": 540
+    }],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' ipc: http://ipc.localhost http://127.0.0.1:*; img-src 'self' data: blob:; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis"],
+    "icon": ["icons/icon.ico"],
+    "resources": { "../dist/lifeos-sidecar/": "sidecar/" },
+    "windows": { "nsis": { "installMode": "currentUser", "installerHooks": "installer-hooks.nsh" } }
+  }
+}

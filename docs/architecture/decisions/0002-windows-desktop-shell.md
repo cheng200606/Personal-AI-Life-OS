@@ -1,6 +1,6 @@
 # ADR 0002: Windows desktop shell with Tauri and a Python sidecar
 
-- **Status:** Proposed
+- **Status:** Accepted and implemented in the desktop candidate
 - **Date:** 2026-11-25
 - **Related:** [ADR 0001](0001-cloud-first.md), [Windows desktop architecture](../desktop.md)
 
@@ -10,7 +10,7 @@ The current product is a React/Vite web client backed by a FastAPI API, SQLAlche
 
 The next product form includes a Windows desktop application. It must run without Docker, keep user data local by default, and provide Windows integration that a browser cannot: tray, notifications, autostart, single instance, native file/folder selection, direct Obsidian vault writes, signed installers, and automatic updates.
 
-Rust and PyInstaller are not installed in the current development environment. WebView2 and Node 24 are present.
+The desktop build uses the MSVC Rust toolchain and PyInstaller. The Windows candidate ships bundled Python and OCR data and uses system WebView2.
 
 ## Decision
 
@@ -20,7 +20,7 @@ Build the Windows desktop distribution with:
 - The **existing React/Vite UI**, built as static assets and extended with a small runtime adapter.
 - A **packaged Python sidecar** (PyInstaller one-folder, Python 3.12 x64) that runs the existing FastAPI app, worker, SQLite database, local object store, Alembic migrations, and bundled Tesseract (English and Simplified Chinese).
 - A **loopback-only local API** on a random port, protected by the existing bearer auth plus a per-launch desktop secret.
-- **Local-first data** under `%LOCALAPPDATA%\PersonalAILifeOS`, with migration backups and signed auto-updates.
+- **Local-first data** under `%LOCALAPPDATA%\PersonalAILifeOS`, with migration backups and a user-selected daily backup destination. Signed updates are a public distribution gate.
 - **Tauri-owned OS integration** for file selection, folder authorization, notifications, Obsidian vault writes, single instance, tray, and autostart.
 
 The existing web client remains supported as the development/reference client and the optional hosted path. Business logic stays in the Python API; the desktop shell must not fork domain behavior.
@@ -29,7 +29,7 @@ The existing web client remains supported as the development/reference client an
 
 - Most API, domain, and UI code is reused; the main new code is desktop lifecycle, OS integration, packaging, signing, and update handling.
 - A `desktop` configuration profile is required: SQLite, local object storage, worker enabled, no production TLS/invite/S3 requirements, loopback binding.
-- Tokens must move from `sessionStorage` to Windows Credential Manager for persistent desktop sessions.
+- The launcher renews desktop API and profile credentials at startup. The renderer holds them in memory. Windows Credential Manager stores configurable model API keys.
 - File access is mediated by the Tauri shell; the sidecar must not accept arbitrary filesystem paths.
 - Installer size and cold-start time include the Python runtime and Tesseract; these must be measured in D0.
 - Windows CI, code signing, signed update manifests, and upgrade/rollback tests become release requirements.

@@ -1,11 +1,18 @@
+import { invoke } from '@tauri-apps/api/core'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import './App.css'
+import './desktop.css'
 import { buildItemMarkdown, buildReviewMarkdown } from './markdownExport'
 import { clearPendingSharedCapture, enableDueNotifications, normalizeSharedCapture, readPendingSharedCapture, sharedCaptureBody } from './pwa'
 import type { SharedCapture } from './pwa'
 import { exportToVault } from './vaultExport'
 import type { VaultConflictPolicy } from './vaultExport'
+import { apiFetch, connectDesktop, desktop, desktopExport, desktopRequest } from './desktopRuntime'
+import { DesktopChatImport } from './DesktopChatImport'
+import { DesktopFolders, DesktopMissingFiles } from './DesktopFolders'
+import { DesktopDrafts, DesktopProviderSettings } from './DesktopAnalysis'
+import { DesktopData } from './DesktopData'
 
 type Source = { id: string; kind: string; name: string; status: string; selected_scope: Record<string, unknown>; last_sync_at: string | null; cloud_consent_at: string | null; cloud_consent_version: string | null }
 type Item = { id: string; source_id: string; kind: string; title: string; content_text: string; occurred_at: string | null; source_timezone: string | null; source_locator: Record<string, unknown>; metadata: Record<string, unknown> }
@@ -27,6 +34,24 @@ type Page = 'timeline' | 'ask' | 'graph' | 'pending' | 'projects' | 'reviews' | 
 const PAGE_PATHS: Record<Page, string> = { timeline: '/timeline', ask: '/ask', graph: '/graph', pending: '/pending', projects: '/projects', reviews: '/reviews', search: '/search', organize: '/organize', account: '/account', capture: '/capture' }
 function pageFromPath(pathname: string): Page {
   return (Object.entries(PAGE_PATHS).find(([, path]) => path === pathname)?.[0] as Page | undefined) || 'timeline'
+}
+type AppIconName = 'timeline' | 'capture' | 'ask' | 'graph' | 'pending' | 'projects' | 'reviews' | 'search' | 'organize' | 'settings' | 'logout' | 'chevron'
+function AppIcon({ name, size = 18 }: { name: AppIconName; size?: number }) {
+  const paths = {
+    timeline: <><circle cx="12" cy="12" r="8.25" /><path d="M12 7v5l3.2 2" /></>,
+    capture: <><path d="M12 5v14M5 12h14" /></>,
+    ask: <><path d="M8 10h8M8 14h5" /><path d="M20 11.5a7.5 7.5 0 0 1-7.5 7.5 8 8 0 0 1-3.5-.8L4 20l1.8-4.1a7.5 7.5 0 1 1 14.2-4.4Z" /></>,
+    graph: <><circle cx="6" cy="7" r="2" /><circle cx="18" cy="6" r="2" /><circle cx="13" cy="18" r="2" /><path d="m8 7 8-1M7 9l5 7m5-8-3 8" /></>,
+    pending: <><path d="M5 4.5h14v15H5z" /><path d="m8 12 2.4 2.4L16 9" /></>,
+    projects: <><path d="M3.8 7.5h6l1.8 2H20v9.2H3.8z" /><path d="M3.8 7.5V5.8h6l1.8 1.7" /></>,
+    reviews: <><rect x="4" y="5.5" width="16" height="15" rx="2" /><path d="M8 3.5v4M16 3.5v4M4 9.5h16M8 13h3M8 16.5h6" /></>,
+    search: <><circle cx="10.8" cy="10.8" r="6.3" /><path d="m16 16 4.2 4.2" /></>,
+    organize: <><path d="M4 5.5h16M4 12h16M4 18.5h10" /><circle cx="7" cy="5.5" r="1" /><circle cx="15" cy="12" r="1" /><circle cx="10" cy="18.5" r="1" /></>,
+    settings: <><path d="M4 7h9M17 7h3M4 17h3M11 17h9" /><circle cx="15" cy="7" r="2" /><circle cx="9" cy="17" r="2" /></>,
+    logout: <><path d="M10 5H5.5A1.5 1.5 0 0 0 4 6.5v11A1.5 1.5 0 0 0 5.5 19H10" /><path d="M14 8l4 4-4 4M8 12h10" /></>,
+    chevron: <><path d="m9 18 6-6-6-6" /></>,
+  }[name]
+  return <svg aria-hidden="true" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">{paths}</svg>
 }
 type SearchTimelineHit = { id: string; source_id: string; source_name: string; title: string; snippet: string; occurred_at: string | null; kind: string }
 type SearchReviewHit = { id: string; period_start: string; period_end: string; status: string; snippet: string; updated_at: string }
@@ -63,14 +88,13 @@ type QaAnswer = { status: 'answered' | 'insufficient_evidence'; summary: string;
 type QaMessage = { id: string; role: string; content: string; answer: QaAnswer | null; created_at: string }
 type QaThread = { id: string; title: string; scope: QaScope; created_at: string; updated_at: string; messages: QaMessage[] }
 
-const API = (import.meta.env.VITE_API_BASE_URL || '') + '/api/v1'
 const GRAPH_CLOUD_CONSENT_VERSION = 'graph-cloud-v1'
 
 async function api<T>(path: string, token: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers)
   headers.set('Authorization', 'Bearer ' + token)
   if (init.body && !(init.body instanceof FormData)) headers.set('Content-Type', 'application/json')
-  const response = await fetch(API + path, { ...init, headers })
+  const response = await apiFetch(path, { ...init, headers })
   if (!response.ok) {
     const body = await response.json().catch(() => null)
     throw new Error(body?.error?.message || '请求失败（' + response.status + ')')
@@ -156,7 +180,8 @@ function selectedFileDisclosure(file: File, selectedConversationCount: number): 
 }
 
 function App() {
-  const [token, setToken] = useState(() => sessionStorage.getItem('lifeos-token') || '')
+  const [token, setToken] = useState(() => desktop ? '' : sessionStorage.getItem('lifeos-token') || '')
+  const [desktopStatus, setDesktopStatus] = useState<'loading' | 'setup' | 'error'>('loading')
   const [user, setUser] = useState<User | null>(null)
   const [disclosure, setDisclosure] = useState<Disclosure | null>(null)
   const [page, setPageState] = useState<Page>(() => pageFromPath(window.location.pathname))
@@ -216,11 +241,56 @@ function App() {
   const [loginMode, setLoginMode] = useState<'login' | 'register'>('login')
   const activeToken = useRef(token)
 
+  const openDesktopProfile = useCallback(async (create = false) => {
+    setDesktopStatus('loading')
+    setError('')
+    try {
+      await connectDesktop()
+      const response = await apiFetch('/auth/desktop-profile', create ? {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC' }),
+      } : {})
+      if (response.status === 404 && !create) {
+        setDesktopStatus('setup')
+        return
+      }
+      const body = await response.json()
+      if (!response.ok) throw new Error(body.error?.message || '无法打开本机资料。')
+      activeToken.current = body.access_token
+      setToken(body.access_token)
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason))
+      setDesktopStatus('error')
+    }
+  }, [])
+
+  useEffect(() => {
+    // The first desktop profile request starts the native service.
+    // eslint-disable-next-line react/set-state-in-effect
+    if (desktop) void openDesktopProfile()
+  }, [openDesktopProfile])
+
   function setPage(next: Page) {
     setPageState(next)
     const path = PAGE_PATHS[next]
     if (window.location.pathname !== path) window.history.pushState({}, '', path)
   }
+
+  useEffect(() => {
+    function onGlobalShortcut(event: KeyboardEvent) {
+      if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== 'k' || !token) return
+      const target = event.target
+      if (target instanceof HTMLElement && (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName))) return
+      event.preventDefault()
+      const path = PAGE_PATHS.search
+      setPageState('search')
+      if (window.location.pathname !== path) window.history.pushState({}, '', path)
+      window.setTimeout(() => document.querySelector<HTMLInputElement>('.search-page input[type="search"]')?.focus(), 60)
+    }
+    window.addEventListener('keydown', onGlobalShortcut)
+    return () => window.removeEventListener('keydown', onGlobalShortcut)
+  }, [token])
 
   useEffect(() => {
     const onPopState = () => setPageState(pageFromPath(window.location.pathname))
@@ -238,7 +308,7 @@ function App() {
       if (sourceFilter) params.set('source_id', sourceFilter)
       const [me, sourceList, timeline, reviewList, reminderList, modelDisclosure, reviewSchedule, reviewQueue, agentQueue, tagList, collectionList, savedList, providerList] = await Promise.all([
         api<User>('/auth/me', token), api<Source[]>('/sources', token), api<{ items: Item[]; total: number; next_cursor: string | null }>('/timeline?' + params.toString(), token),
-        api<Review[]>('/reviews', token), api<Reminder[]>('/reminders', token), fetch(API + '/auth/model-disclosure').then((response) => response.json() as Promise<Disclosure>),
+        api<Review[]>('/reviews', token), api<Reminder[]>('/reminders', token), apiFetch('/auth/model-disclosure').then((response) => response.json() as Promise<Disclosure>),
         api<ReviewSchedule>('/review-schedule', token), api<{ total: number }>('/graph/review?status=pending&limit=1', token),
         api<{ total: number }>('/agent/actions?status=active&limit=1', token), api<Tag[]>('/tags', token),
         api<Collection[]>('/collections', token), api<SavedSearch[]>('/saved-searches', token),
@@ -256,17 +326,27 @@ function App() {
   useEffect(() => { activeToken.current = token }, [token])
   useEffect(() => { const timer = window.setInterval(() => setNow(Date.now()), 60000); return () => window.clearInterval(timer) }, [])
   useEffect(() => {
-    if (!token || !('Notification' in window) || Notification.permission !== 'granted') return
+    if (!token || (desktop
+      ? localStorage.getItem('lifeos-desktop-notifications') !== 'enabled'
+      : !('Notification' in window) || Notification.permission !== 'granted')) return
     const due = reminders.filter((reminder) => ['pending', 'snoozed'].includes(reminder.status) && reminder.due_at && new Date(reminder.due_at).getTime() <= now)
-    const key = due.map((reminder) => reminder.id).sort().join(',')
+    const key = due.map((reminder) => reminder.id + ':' + reminder.due_at).sort().join(',')
     if (!key) { notifiedReminderKey.current = ''; return }
     if (notifiedReminderKey.current === key) return
+    if (desktop) {
+      if (localStorage.getItem('lifeos-last-due-notification') === key) return
+      void invoke('desktop_notify_due', { count: due.length }).then(() => {
+        notifiedReminderKey.current = key
+        localStorage.setItem('lifeos-last-due-notification', key)
+      }).catch(() => undefined)
+      return
+    }
     void enableDueNotifications(due.length, '/reviews').then((result) => {
       if (result.status === 'enabled' || result.status === 'already-enabled') notifiedReminderKey.current = key
     })
   }, [now, reminders, token])
   useEffect(() => {
-    if (!token || page !== 'reviews') return
+    if (!token || (!desktop && page !== 'reviews')) return
     const load = () => Promise.all([
       api<Review[]>('/reviews', token), api<Reminder[]>('/reminders', token), api<ReviewSchedule>('/review-schedule', token),
     ]).then(([nextReviews, nextReminders, nextSchedule]) => { setReviews(nextReviews); setReminders(nextReminders); setSchedule(nextSchedule) }).catch(() => undefined)
@@ -274,6 +354,28 @@ function App() {
     const timer = window.setInterval(() => { void load() }, 60000)
     return () => window.clearInterval(timer)
   }, [page, token])
+  useEffect(() => {
+    if (!desktop || !token) return
+    let active = true
+    const timer = window.setInterval(() => {
+      void desktopRequest<{ status: string; scan_status: string }[]>(token, '/desktop/folders').then((folders) => {
+        if (!active) return
+        const syncing = folders.filter((folder) => folder.status === 'active')
+        return invoke('desktop_tray_status', {
+          active: syncing.length,
+          needsAttention: syncing.some((folder) => ['partial', 'unavailable'].includes(folder.scan_status)),
+        })
+      }).catch(() => undefined)
+      void apiFetch('/ready', { signal: AbortSignal.timeout(5000) }).catch(() => {
+        if (!active || activeToken.current !== token) return
+        activeToken.current = ''
+        setToken('')
+        void openDesktopProfile()
+      })
+    }, 15000)
+    const refreshProfile = window.setTimeout(() => void openDesktopProfile(), 6 * 60 * 60 * 1000)
+    return () => { active = false; window.clearInterval(timer); window.clearTimeout(refreshProfile) }
+  }, [openDesktopProfile, token])
   useEffect(() => () => { if (photoPreview) URL.revokeObjectURL(photoPreview) }, [photoPreview])
   useEffect(() => { directoryInput.current?.setAttribute('webkitdirectory', '') }, [token])
   useEffect(() => {
@@ -346,7 +448,7 @@ function App() {
     const body: Record<string, string> = { email: String(data.get('email')), password: String(data.get('password')) }
     if (loginMode === 'register') { body.timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; body.invite_code = String(data.get('invite_code') || '') }
     try {
-      const result = await fetch(API + '/auth/' + loginMode, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      const result = await apiFetch('/auth/' + loginMode, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
       const payload = await result.json()
       if (!result.ok) throw new Error(payload?.error?.message || '认证失败。')
       sessionStorage.setItem('lifeos-token', payload.access_token); activeToken.current = payload.access_token; setToken(payload.access_token)
@@ -370,6 +472,15 @@ function App() {
     }
     if (fromDirectory && nextFiles.length === 0) { setError('所选文件夹中没有支持的 JPEG、PNG 或 WebP 照片。'); return }
     const next = nextFiles[0] || null
+    if (desktop && next && /\.(json|jsonl)$/i.test(next.name)) {
+      setPage('capture')
+      setNotice('请用「从聊天导出导入」选择文件和会话。')
+      return
+    }
+    if (next && !imageFiles.length && next.size > 5 * 1024 * 1024) {
+      setError('此类文件不能超过 5 MB。')
+      return
+    }
     setFile(next); setPhotoFiles(nextFiles.length && nextFiles.every((selectedFile) => /\.(jpe?g|png|webp)$/i.test(selectedFile.name)) ? nextFiles : [])
     setPhotoPreview(next && /\.(jpe?g|png|webp)$/i.test(next.name) ? URL.createObjectURL(next) : '')
     if (fromDirectory && skipped) setNotice(`${skipped} 个非照片文件已忽略。`)
@@ -453,7 +564,8 @@ function App() {
           uploadErrors.push(selectedFile.name)
         }
       }
-      if (jobIds.length) setNotice(`已上传 ${jobIds.length} 张照片，OCR 正在处理。`)
+      if (jobIds.length && kind === 'photo') setNotice(`已上传 ${jobIds.length} 张照片，OCR 正在处理。`)
+      else if (desktop && jobIds.length) setNotice(`已导入 ${createdItems} 条新记录，${jobIds.length} 项分析已排队。`)
       else if (calendarRun) setNotice(`日历已对账：新增 ${calendarRun.items_created}，更新 ${calendarRun.items_updated}，未变化 ${calendarRun.items_duplicate}，撤销 ${calendarRun.items_removed}，跳过 ${calendarRun.items_skipped}。`)
       else setNotice(`已导入 ${createdItems} 条新记录；${duplicateItems} 条未变化。`)
       if (uploadErrors.length) setError(`${uploadErrors.length} 张照片无法导入：${uploadErrors.join(', ')}`)
@@ -486,6 +598,7 @@ function App() {
   }
 
   async function setCloudConsent(source: Source, enabled: boolean) {
+    if (desktop && enabled && !window.confirm(`允许所配置的提供方接收「${source.name}」以后导入和更新的文本摘录？`)) return
     setError('')
     try {
       await api('/sources/' + source.id + '/cloud-consent', token, { method: 'PATCH', body: JSON.stringify({ enabled, consent_version: GRAPH_CLOUD_CONSENT_VERSION }) })
@@ -500,10 +613,12 @@ function App() {
       const sourceName = source?.name || (item.kind === 'quick_note' ? 'Quick notes' : 'Life OS')
       const organization = await api<ItemOrganization>('/items/' + item.id + '/organization', token)
       const filename = (item.title.replace(/[^\p{L}\p{N}-]+/gu, '-').replace(/^-|-$/g, '').slice(0, 72) || 'lifeos-note') + '-' + item.id.slice(0, 8)
-      const result = await exportToVault({
+      const document = {
         filename: filename + '.md',
         markdown: buildItemMarkdown(item, sourceName, organization.tags.map((tag) => tag.name), organization.collections.map((collection) => collection.name)),
-      }, vaultPolicy)
+      }
+      const result = desktop ? await desktopExport(token, document, vaultPolicy) : await exportToVault(document, vaultPolicy)
+      if (!result) return
       setNotice(result.status === 'kept'
         ? `已保留现有文件 ${result.filename}，未覆盖你的修改。`
         : result.status === 'downloaded'
@@ -516,7 +631,7 @@ function App() {
 
   async function downloadSource(item: Item) {
     try {
-      const response = await fetch(API + '/items/' + item.id + '/raw', { headers: { Authorization: 'Bearer ' + token } })
+      const response = await apiFetch('/items/' + item.id + '/raw', { headers: { Authorization: 'Bearer ' + token } })
       if (!response.ok) throw new Error('来源文件不可用或访问已被撤回。')
       const blob = await response.blob(); const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = 'lifeos-source.bin'; link.click(); URL.revokeObjectURL(link.href)
     } catch (e) { setError(e instanceof Error ? e.message : '无法下载来源。') }
@@ -624,12 +739,14 @@ function App() {
   async function downloadReview(review: Review) {
     setError('')
     try {
-      const response = await fetch(API + '/reviews/' + review.id + '/export.md', { headers: { Authorization: 'Bearer ' + token } })
+      const response = await apiFetch('/reviews/' + review.id + '/export.md', { headers: { Authorization: 'Bearer ' + token } })
       if (!response.ok) throw new Error('这条复盘暂时无法导出。')
-      const result = await exportToVault({
+      const document = {
         filename: 'weekly-review-' + review.period_start.slice(0, 10) + '.md',
         markdown: buildReviewMarkdown(await response.text(), review),
-      }, vaultPolicy)
+      }
+      const result = desktop ? await desktopExport(token, document, vaultPolicy) : await exportToVault(document, vaultPolicy)
+      if (!result) return
       setNotice(result.status === 'kept'
         ? `已保留现有文件 ${result.filename}，未覆盖你的修改。`
         : result.status === 'downloaded'
@@ -736,7 +853,7 @@ function App() {
 
   async function downloadAccountArchive() {
     try {
-      const response = await fetch(API + '/account/archive', { headers: { Authorization: 'Bearer ' + token } })
+      const response = await apiFetch('/account/archive', { headers: { Authorization: 'Bearer ' + token } })
       if (!response.ok) throw new Error('无法创建账号归档。')
       const blob = await response.blob(); const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = 'lifeos-archive.zip'; link.click(); URL.revokeObjectURL(link.href)
     } catch (e) { setError(e instanceof Error ? e.message : '归档失败。') }
@@ -744,9 +861,23 @@ function App() {
 
   async function deleteAccount() {
     if (!window.confirm('永久删除账号与全部已存数据？如需副本请先下载归档。')) return
-    try { await api('/account', token, { method: 'DELETE' }); sessionStorage.removeItem('lifeos-token'); void clearPendingSharedCapture(); activeToken.current = ''; setToken(''); setUser(null) }
+    try { await api('/account', token, { method: 'DELETE' }); sessionStorage.removeItem('lifeos-token'); void clearPendingSharedCapture(); activeToken.current = ''; setToken(''); setUser(null); if (desktop) setDesktopStatus('setup') }
     catch (e) { setError(e instanceof Error ? e.message : '账号删除失败。') }
   }
+
+  if (!token && desktop) return <main className="auth-shell"><section className="auth-card">
+    <div className="brand-mark">L</div>
+    <h1>Personal AI Life OS</h1>
+    {desktopStatus === 'loading' && <p role="status">正在打开本机工作区…</p>}
+    {desktopStatus === 'setup' && <>
+      <p className="muted">工作区保存在此 Windows 用户账户的本机目录。外部 AI 默认关闭。</p>
+      <button className="primary" onClick={() => void openDesktopProfile(true)}>创建本机个人资料</button>
+    </>}
+    {desktopStatus === 'error' && <>
+      <p role="alert" className="notice error">{error}</p>
+      <button className="secondary" onClick={() => void openDesktopProfile()}>重试</button>
+    </>}
+  </section></main>
 
   if (!token) return <main className="auth-shell"><section className="auth-card"><div className="brand-mark">L</div><p className="eyebrow">PERSONAL AI LIFE OS</p><h1>你的生活，有据可循。</h1><p className="muted">选择要记住的内容，带着来源复盘，让笔记始终可移植。</p><form onSubmit={authenticate} className="stack"><label>邮箱<input name="email" type="email" required autoComplete="email" /></label><label>密码<input name="password" type="password" minLength={12} required autoComplete={loginMode === 'login' ? 'current-password' : 'new-password'} /></label>{loginMode === 'register' && <label>邀请码 <span className="muted">（如需要）</span><input name="invite_code" /></label>}<button className="primary" disabled={busy}>{busy ? '请稍候…' : loginMode === 'login' ? '登录' : '创建账号'}</button></form><button className="text-button" onClick={() => setLoginMode(loginMode === 'login' ? 'register' : 'login')}>{loginMode === 'login' ? '创建账号' : '返回登录'}</button>{error && <p className="notice error">{error}</p>}</section></main>
 
@@ -755,21 +886,94 @@ function App() {
   const readyReview = schedule?.last_review_id ? reviews.find((review) => review.id === schedule.last_review_id && review.status === 'draft') : undefined
   const selectedReviewProvider = providers.find((provider) => provider.id === reviewProviderId)
   const pageTitle: Record<Page, string> = { timeline: '时间线', ask: '提问', graph: '图谱', pending: '待审', projects: '项目与目标', reviews: '复盘', search: '搜索', organize: '整理', account: '设置', capture: '快速捕获' }
+  const pageDescription: Record<Page, string> = {
+    timeline: '把重要经历、想法与来源放在同一条时间线上。',
+    ask: '基于已有记录和可追溯证据，寻找答案。',
+    graph: '查看人物、项目、主题及其证据关系。',
+    pending: '检查待确认的线索，再决定是否纳入知识图谱。',
+    projects: '跟进目标、项目进展与相关行动。',
+    reviews: '回顾一段时间的进展，整理下一步行动。',
+    search: '跨时间线、复盘与提醒查找资料。',
+    organize: '通过标签和集合整理个人知识。',
+    account: '管理资料来源、模型授权和工作区偏好。',
+    capture: '快速记下进展、想法或待办。',
+  }
+  const activeSourcesTotal = sources.filter((source) => source.status === 'active').length
 
-  return <div className="app-shell"><aside className="sidebar"><div className="brand"><span className="brand-mark small">L</span><span>Life OS</span></div><nav aria-label="Main navigation"><button aria-label="时间线" className={page === 'timeline' ? 'nav-link active' : 'nav-link'} onClick={() => setPage('timeline')}>◷ <span>时间线</span></button><button aria-label="捕获" className={page === 'capture' ? 'nav-link active' : 'nav-link'} onClick={() => setPage('capture')}>✎ <span>捕获</span></button><button aria-label="导航：提问" className={page === 'ask' ? 'nav-link active' : 'nav-link'} onClick={() => setPage('ask')}>✦ <span>提问</span></button><button aria-label="图谱" className={page === 'graph' ? 'nav-link active' : 'nav-link'} onClick={() => setPage('graph')}>◇ <span>图谱</span></button><button aria-label="待审" className={page === 'pending' ? 'nav-link active' : 'nav-link'} onClick={() => setPage('pending')}>✓ <span>待审</span>{pendingReviewTotal > 0 && <span className="nav-badge">{pendingReviewTotal}</span>}</button><button aria-label="项目与目标" className={page === 'projects' ? 'nav-link active' : 'nav-link'} onClick={() => setPage('projects')}>◎ <span>项目与目标</span></button><button aria-label="复盘" className={page === 'reviews' ? 'nav-link active' : 'nav-link'} onClick={() => setPage('reviews')}>✳ <span>复盘</span>{dueReminders.length > 0 && <span className="nav-badge">{dueReminders.length}</span>}</button><button aria-label="导航：搜索" className={page === 'search' ? 'nav-link active' : 'nav-link'} onClick={() => setPage('search')}>⌕ <span>搜索</span></button><button aria-label="导航：整理" className={page === 'organize' ? 'nav-link active' : 'nav-link'} onClick={() => setPage('organize')}>▤ <span>整理</span></button><button aria-label="设置" className={page === 'account' ? 'nav-link active' : 'nav-link'} onClick={() => setPage('account')}>⚙ <span>设置</span></button></nav><div className="sidebar-foot"><span className="avatar">{user?.email.slice(0, 1).toUpperCase()}</span><span className="user-email">{user?.email}</span><button className="icon-button" title="Sign out" onClick={() => { sessionStorage.removeItem('lifeos-token'); void clearPendingSharedCapture(); activeToken.current = ''; setToken(''); setUser(null) }}>↗</button></div></aside>
-    <main className="main"><header className="topbar"><div><p className="eyebrow">你的个人知识空间</p><h1>{pageTitle[page]}</h1></div><div className="topbar-actions">{page !== 'capture' && <label className="vault-policy">Vault 冲突<select aria-label="Vault 冲突策略" value={vaultPolicy} onChange={(event) => setVaultPolicy(event.target.value as VaultConflictPolicy)}><option value="keep">保留现有（默认）</option><option value="copy">另存副本</option><option value="overwrite">明确覆盖</option></select></label>}<span className="privacy-pill"><span className="live-dot" /> 私有工作区</span></div></header>
+  return <div className="app-shell app-shell-desktop">
+    <aside className="sidebar desktop-sidebar">
+      <button className="brand" onClick={() => setPage('timeline')} aria-label="返回时间线">
+        <span className="brand-mark"><span className="brand-mark-glyph">L</span><span className="brand-mark-orbit" /></span>
+        <span className="brand-copy"><strong>Life OS</strong><small>PERSONAL WORKSPACE</small></span>
+      </button>
+      <button className="sidebar-compose" aria-label="快速记录" onClick={() => setPage('capture')}>
+        <span className="compose-icon"><AppIcon name="capture" size={17} /></span>
+        <span>快速记录</span>
+      </button>
+      <nav className="sidebar-nav" aria-label="主导航">
+        <div className="nav-group">
+          <p className="nav-group-label">工作区</p>
+          <button aria-label="时间线" className={page === 'timeline' ? 'nav-link active' : 'nav-link'} onClick={() => setPage('timeline')}><span className="nav-icon"><AppIcon name="timeline" /></span><span className="nav-label">时间线</span></button>
+          <button aria-label="捕获" className={page === 'capture' ? 'nav-link active' : 'nav-link'} onClick={() => setPage('capture')}><span className="nav-icon"><AppIcon name="capture" /></span><span className="nav-label">捕获</span></button>
+          <button aria-label="导航：提问" className={page === 'ask' ? 'nav-link active' : 'nav-link'} onClick={() => setPage('ask')}><span className="nav-icon"><AppIcon name="ask" /></span><span className="nav-label">提问</span></button>
+          <button aria-label="待审" className={page === 'pending' ? 'nav-link active' : 'nav-link'} onClick={() => setPage('pending')}><span className="nav-icon"><AppIcon name="pending" /></span><span className="nav-label">待审</span>{pendingReviewTotal > 0 && <span className="nav-badge">{pendingReviewTotal}</span>}</button>
+        </div>
+        <div className="nav-group">
+          <p className="nav-group-label">知识与回顾</p>
+          <button aria-label="图谱" className={page === 'graph' ? 'nav-link active' : 'nav-link'} onClick={() => setPage('graph')}><span className="nav-icon"><AppIcon name="graph" /></span><span className="nav-label">图谱</span></button>
+          <button aria-label="项目与目标" className={page === 'projects' ? 'nav-link active' : 'nav-link'} onClick={() => setPage('projects')}><span className="nav-icon"><AppIcon name="projects" /></span><span className="nav-label">项目与目标</span></button>
+          <button aria-label="复盘" className={page === 'reviews' ? 'nav-link active' : 'nav-link'} onClick={() => setPage('reviews')}><span className="nav-icon"><AppIcon name="reviews" /></span><span className="nav-label">复盘</span>{dueReminders.length > 0 && <span className="nav-badge subtle-badge">{dueReminders.length}</span>}</button>
+        </div>
+        <div className="nav-group">
+          <p className="nav-group-label">资料管理</p>
+          <button aria-label="导航：搜索" className={page === 'search' ? 'nav-link active' : 'nav-link'} onClick={() => setPage('search')}><span className="nav-icon"><AppIcon name="search" /></span><span className="nav-label">搜索</span></button>
+          <button aria-label="导航：整理" className={page === 'organize' ? 'nav-link active' : 'nav-link'} onClick={() => setPage('organize')}><span className="nav-icon"><AppIcon name="organize" /></span><span className="nav-label">整理</span></button>
+          <button aria-label="设置" className={page === 'account' ? 'nav-link active' : 'nav-link'} onClick={() => setPage('account')}><span className="nav-icon"><AppIcon name="settings" /></span><span className="nav-label">设置</span></button>
+        </div>
+      </nav>
+      <section className="sidebar-source-card" aria-label="来源状态">
+        <div className="sidebar-source-heading"><span className={`source-live-indicator ${activeSourcesTotal > 0 ? 'active' : sources.length > 0 ? 'paused' : 'idle'}`} /><span>来源状态</span><span className="source-total">{activeSourcesTotal}</span></div>
+        <p>{sources.length === 0 ? '添加来源后，记录会显示在这里。' : `${activeSourcesTotal} 个来源正在使用`}</p>
+        <button onClick={() => setPage('account')}>管理来源 <AppIcon name="chevron" size={14} /></button>
+      </section>
+      <div className="sidebar-foot">
+        <span className="avatar">{desktop ? '我' : user?.email.slice(0, 1).toUpperCase() || '我'}</span>
+        <span className="user-details"><strong>{desktop ? '本机个人资料' : user?.email || '个人空间'}</strong><small>私人工作区</small></span>
+        {!desktop && <button className="icon-button signout-button" aria-label="退出登录" title="退出登录" onClick={() => { sessionStorage.removeItem('lifeos-token'); void clearPendingSharedCapture(); activeToken.current = ''; setToken(''); setUser(null) }}><AppIcon name="logout" size={16} /></button>}
+      </div>
+    </aside>
+    <main className="main desktop-main">
+      <header className="topbar desktop-topbar">
+        <div className="page-heading"><div className="page-breadcrumb"><span>Life OS</span><span className="breadcrumb-divider">/</span><strong>{pageTitle[page]}</strong></div><h1>{pageTitle[page]}</h1><p className="page-subtitle">{pageDescription[page]}</p></div>
+        <div className="topbar-actions">
+          <button className="search-launcher" onClick={() => setPage('search')} aria-label="打开搜索"><AppIcon name="search" size={16} /><span>搜索你的记录</span><kbd>Ctrl K</kbd></button>
+          {page !== 'capture' && <label className="vault-policy"><span>导出冲突</span><select aria-label="Vault 冲突策略" value={vaultPolicy} onChange={(event) => setVaultPolicy(event.target.value as VaultConflictPolicy)}><option value="keep">保留现有</option><option value="copy">另存副本</option><option value="overwrite">明确覆盖</option></select></label>}
+          <span className="privacy-pill"><span className="live-dot" /> 私有空间</span>
+        </div>
+      </header>
       {error && <div className="notice error" role="alert">{error}<button className="icon-button" onClick={() => setError('')}>×</button></div>}
       {notice && <div className="notice success" role="status">{notice}<button className="icon-button" onClick={() => setNotice('')}>×</button></div>}
       {agentActiveTotal > 0 && <div className="notice success">Agent 自动写入了 {agentActiveTotal} 项内部记录，可在设置中查看并一键撤销。<button className="text-button" onClick={() => setPage('account')}>查看并撤销 ↗</button></div>}
       {page === 'capture' && <CapturePage token={token} items={items} reminders={reminders} now={now} onSaved={() => void refresh()} onError={setError} onNotice={setNotice} onOpenTimeline={() => setPage('timeline')} onReminderAction={updateReminder} />}
+      {page === 'capture' && desktop && <DesktopChatImport token={token} onComplete={refresh} />}
       {page === 'ask' && <AskPanel token={token} sources={sources} onError={setError} onNotice={setNotice} onOpenCitation={openTimelineCitation} />}
       {page === 'graph' && <GraphPanel view="graph" token={token} onError={setError} onNotice={setNotice} onPendingChange={setPendingReviewTotal} onOpenItem={openTimelineCitation} />}
       {page === 'pending' && <GraphPanel view="pending" token={token} onError={setError} onNotice={setNotice} onPendingChange={setPendingReviewTotal} onOpenItem={openTimelineCitation} />}
+      {page === 'pending' && desktop && <DesktopMissingFiles token={token} onChange={refresh} />}
+      {page === 'pending' && desktop && <DesktopDrafts token={token} onOpenItem={openTimelineCitation} onChange={refresh} />}
+      {page === 'account' && desktop && <DesktopFolders token={token} onChange={refresh} />}
+      {page === 'account' && desktop && <DesktopProviderSettings token={token} onChange={refresh} />}
+      {page === 'account' && desktop && <DesktopData token={token} onRestore={async () => {
+        activeToken.current = ''
+        setToken('')
+        setUser(null)
+        await openDesktopProfile()
+      }} />}
       {page === 'projects' && <ProjectsPanel token={token} onError={setError} onNotice={setNotice} onOpenItem={openTimelineCitation} />}
       {page === 'timeline' && <><section className="hero-panel"><div><p className="eyebrow">记录重要内容</p><h2>让上下文真正有用。</h2><p className="muted">导入选中的笔记、会话或照片。时间线会把每条记录与它的来源保持连接。</p></div><div className="stat"><strong>{timelineTotal}</strong><span>条时间线记录</span></div></section>
         {pendingReviewTotal > 0 && <div className="notice success">有 {pendingReviewTotal} 条低置信度图谱条目待审。<button className="text-button" onClick={() => setPage('graph')}>去处理 ↗</button></div>}
         <QuickNotePanel token={token} onSaved={() => void refresh()} onError={setError} onNotice={setNotice} />
-        <section className="panel import-panel"><div className="panel-heading"><div><p className="eyebrow">添加来源</p><h2>导入已选材料</h2></div><span className="limit-pill">文本 ≤5 MB · 照片 ≤20 MB</span></div><form onSubmit={importSelected} className="import-form"><label className="file-drop"><span className="upload-icon">↑</span><span><strong>{file ? file.name : '选择文件'}</strong><small>支持 Markdown、TXT、PDF、DOCX、ICS 日历、聊天 JSON/JSONL、JPEG、PNG、WebP</small></span><input type="file" accept=".md,.markdown,.txt,.pdf,.docx,.ics,.json,.jsonl,image/jpeg,image/png,image/webp" multiple onChange={(event) => void previewFiles(event.target.files)} /></label><label className="folder-picker">选择照片文件夹<input ref={directoryInput} type="file" accept="image/jpeg,image/png,image/webp" multiple onChange={(event) => void previewFiles(event.target.files, true)} /></label>{calendarPreview && <div className="calendar-preview"><strong>日历预览：{calendarPreview.events} 个日程</strong><p className="small-note">每次上传按完整快照对账；取消或消失的日程会退出时间线。{calendarPreview.recurring > 0 ? `检测到 ${calendarPreview.recurring} 个含重复规则的日程，首版会明确跳过。` : '未检测到重复规则属性。'}</p><label>导入方式<select aria-label="日历导入方式" value={calendarSourceId} onChange={(event) => setCalendarSourceId(event.target.value)}><option value="">作为新日历来源导入</option>{sources.filter((source) => source.kind === 'calendar_ics').map((source) => <option value={source.id} key={source.id} disabled={source.status !== 'active'}>更新现有日历：{source.name}（{source.status}）</option>)}</select></label></div>}{conversations.length > 0 && <div className="selection-box"><div className="selection-head"><strong>选择要导入的会话</strong><button type="button" className="text-button" onClick={() => setSelected(selected.length === conversations.length ? [] : conversations.map((entry) => entry.id))}>{selected.length === conversations.length ? '清空选择' : '全选'}</button></div><div className="conversation-list">{conversations.map((entry) => <label className="conversation" key={entry.id}><input type="checkbox" checked={selected.includes(entry.id)} onChange={(event) => setSelected(event.target.checked ? [...selected, entry.id] : selected.filter((value) => value !== entry.id))} /><span>{entry.title}<small>{entry.created_at ? new Date(entry.created_at * 1000).toLocaleDateString() : '日期未知'}</small></span></label>)}</div><p className="small-note">未选中的会话不会上传。</p></div>}{photoFiles.length > 0 && <><p className="small-note">已选择 {photoFiles.length} 张照片。每张单独上传；不会发送文件夹路径或不支持的文件。</p>{photoFiles.length === 1 && <div className="local-photo-preview"><img src={photoPreview} alt="所选照片预览" /><p className="small-note">保存的照片会重新编码以移除 EXIF 位置等元数据，OCR 文本可搜索。</p></div>}{photoFiles.length === 1 && <label className="inline-field">照片日期（可选）<input type="datetime-local" value={photoDate} onChange={(event) => setPhotoDate(event.target.value)} /></label>}</>}<div className="import-actions"><p className="small-note">提交后才会处理所选文件。</p>{photoFiles.length > 1 ? <p className="selection-disclosure"><strong>{photoFiles.length} 张照片 · {photoFiles.reduce((total, selectedFile) => total + selectedFile.size, 0).toLocaleString()} 字节。</strong> 所选照片会被清理并处理；EXIF/GPS 元数据会被移除。</p> : file && <p className="selection-disclosure"><strong>{file.name} · {file.size.toLocaleString()} 字节。</strong> {selectedFileDisclosure(file, selected.length)}</p>}<button className="primary" disabled={busy || !file}>{busy ? '导入中…' : '导入所选'}</button></div></form></section>
+        <section className="panel import-panel"><div className="panel-heading"><div><p className="eyebrow">添加来源</p><h2>导入已选材料</h2></div><span className="limit-pill">文本 ≤5 MB · 照片 ≤20 MB</span></div>{desktop && <button type="button" className="text-button" onClick={() => setPage("capture")}>选择聊天会话（最多 1 GiB）</button>}<form onSubmit={importSelected} className="import-form"><label className="file-drop"><span className="upload-icon">↑</span><span><strong>{file ? file.name : '选择文件'}</strong><small>支持 Markdown、TXT、PDF、DOCX、ICS 日历、聊天 JSON/JSONL、JPEG、PNG、WebP</small></span><input type="file" accept=".md,.markdown,.txt,.pdf,.docx,.ics,.json,.jsonl,image/jpeg,image/png,image/webp" multiple onChange={(event) => void previewFiles(event.target.files)} /></label><label className="folder-picker">选择照片文件夹<input ref={directoryInput} type="file" accept="image/jpeg,image/png,image/webp" multiple onChange={(event) => void previewFiles(event.target.files, true)} /></label>{calendarPreview && <div className="calendar-preview"><strong>日历预览：{calendarPreview.events} 个日程</strong><p className="small-note">每次上传按完整快照对账；取消或消失的日程会退出时间线。{calendarPreview.recurring > 0 ? `检测到 ${calendarPreview.recurring} 个含重复规则的日程，首版会明确跳过。` : '未检测到重复规则属性。'}</p><label>导入方式<select aria-label="日历导入方式" value={calendarSourceId} onChange={(event) => setCalendarSourceId(event.target.value)}><option value="">作为新日历来源导入</option>{sources.filter((source) => source.kind === 'calendar_ics').map((source) => <option value={source.id} key={source.id} disabled={source.status !== 'active'}>更新现有日历：{source.name}（{source.status}）</option>)}</select></label></div>}{conversations.length > 0 && <div className="selection-box"><div className="selection-head"><strong>选择要导入的会话</strong><button type="button" className="text-button" onClick={() => setSelected(selected.length === conversations.length ? [] : conversations.map((entry) => entry.id))}>{selected.length === conversations.length ? '清空选择' : '全选'}</button></div><div className="conversation-list">{conversations.map((entry) => <label className="conversation" key={entry.id}><input type="checkbox" checked={selected.includes(entry.id)} onChange={(event) => setSelected(event.target.checked ? [...selected, entry.id] : selected.filter((value) => value !== entry.id))} /><span>{entry.title}<small>{entry.created_at ? new Date(entry.created_at * 1000).toLocaleDateString() : '日期未知'}</small></span></label>)}</div><p className="small-note">未选中的会话不会上传。</p></div>}{photoFiles.length > 0 && <><p className="small-note">已选择 {photoFiles.length} 张照片。每张单独上传；不会发送文件夹路径或不支持的文件。</p>{photoFiles.length === 1 && <div className="local-photo-preview"><img src={photoPreview} alt="所选照片预览" /><p className="small-note">保存的照片会重新编码以移除 EXIF 位置等元数据，OCR 文本可搜索。</p></div>}{photoFiles.length === 1 && <label className="inline-field">照片日期（可选）<input type="datetime-local" value={photoDate} onChange={(event) => setPhotoDate(event.target.value)} /></label>}</>}<div className="import-actions"><p className="small-note">提交后才会处理所选文件。</p>{photoFiles.length > 1 ? <p className="selection-disclosure"><strong>{photoFiles.length} 张照片 · {photoFiles.reduce((total, selectedFile) => total + selectedFile.size, 0).toLocaleString()} 字节。</strong> 所选照片会被清理并处理；EXIF/GPS 元数据会被移除。</p> : file && <p className="selection-disclosure"><strong>{file.name} · {file.size.toLocaleString()} 字节。</strong> {selectedFileDisclosure(file, selected.length)}</p>}<button className="primary" disabled={busy || !file}>{busy ? '导入中…' : '导入所选'}</button></div></form></section>
         <section className="timeline-layout"><div className="panel timeline-panel"><div className="panel-heading"><div><p className="eyebrow">你的记录</p><h2>最近活动</h2></div><span className="count-pill">{visibleItems.length} / {timelineTotal}</span></div><label className="search"><span>⌕</span><input aria-label="搜索时间线" placeholder="搜索笔记与会话" value={query} onChange={(event) => setQuery(event.target.value)} /><kbd>⌘ K</kbd></label><div className="filter-row"><label>从<input type="date" value={dateStart} onChange={(event) => setDateStart(event.target.value)} /></label><label>至<input type="date" value={dateEnd} onChange={(event) => setDateEnd(event.target.value)} /></label><label>来源<select value={sourceFilter} onChange={(event) => setSourceFilter(event.target.value)}><option value="">全部来源</option>{sourceFilter && !sources.some((source) => source.id === sourceFilter) && <option value={sourceFilter}>当前筛选（快速笔记）</option>}{sources.map((source) => <option value={source.id} key={source.id}>{source.name}</option>)}</select></label></div><div className="button-row extract-toolbar"><span className="small-note">已选 {extractSelected.length} 条</span><button className="secondary" disabled={!extractSelected.length || extracting} onClick={() => void extractItems()}>{extracting ? '抽取中…' : '抽取所选'}</button>{extractSelected.length > 0 && <button className="text-button" onClick={() => setExtractSelected([])}>清空选择</button>}</div><div className="timeline-list">{visibleItems.map((item) => { const source = sources.find((entry) => entry.id === item.source_id); return <article className="timeline-item" id={'timeline-item-' + item.id} key={item.id}><input type="checkbox" className="timeline-select" aria-label={'选择抽取 ' + item.title} checked={extractSelected.includes(item.id)} onChange={(event) => setExtractSelected(event.target.checked ? [...extractSelected, item.id] : extractSelected.filter((id) => id !== item.id))} /><span className="timeline-marker">{item.kind === 'chat_message' ? '✳' : item.kind === 'photo' ? '▧' : item.kind === 'calendar_event' ? '▦' : item.kind === 'quick_note' ? '✎' : '▤'}</span><div className="item-content"><div className="item-meta"><span>{item.occurred_at ? new Date(item.occurred_at).toLocaleString() : '日期未知'}</span><span className="dot-separator">·</span><span>{source?.name || (item.kind === 'quick_note' ? '快速笔记' : item.kind === 'calendar_event' ? '日历' : '导入来源')}</span></div><h3>{item.title}</h3>{item.kind === 'quick_note' && editingNoteId === item.id && <QuickNoteEditor item={item} token={token} onCancel={() => setEditingNoteId('')} onSaved={() => { setEditingNoteId(''); void refresh() }} onError={setError} onNotice={setNotice} />}{item.kind === 'photo' && Boolean(item.metadata.ocr_status) && <div className="photo-ocr-state"><span>OCR: {String(item.metadata.ocr_status).replace('_', ' ')}</span>{['failed', 'cancelled'].includes(String(item.metadata.ocr_status)) && <button className="text-button" onClick={() => void retryPhotoOcr(item)}>重试 OCR</button>}</div>}{item.kind === 'photo' && <><PhotoImage itemId={item.id} token={token} />{disclosure?.available && <div className="photo-description"><button className="text-button" disabled={!user?.ai_consent_at || ['queued', 'running'].includes(String(item.metadata.description_status))} onClick={() => void describePhoto(item)}>{['queued', 'running'].includes(String(item.metadata.description_status)) ? '生成中…' : photoDescriptions[item.id] || item.metadata.description_status === 'confirmed' ? '再生成一版' : item.metadata.description_status === 'draft' ? '查看已保存草稿' : ['failed', 'cancelled'].includes(String(item.metadata.description_status)) ? '重试描述' : '使用 AI 描述'}</button><span className="small-note">同意后会把清理后的照片发送给 {disclosure.provider}。</span>{photoDescriptions[item.id] && <><textarea value={photoDescriptions[item.id]} onChange={(event) => setPhotoDescriptions((current) => ({ ...current, [item.id]: event.target.value }))} rows={3} aria-label="Photo description draft" /><button className="secondary" onClick={() => void confirmPhotoDescription(item)}>把描述加入时间线</button></>}</div>}</>}{!(item.kind === 'quick_note' && editingNoteId === item.id) && <p>{item.content_text.slice(0, 360)}{item.content_text.length > 360 ? '…' : ''}</p>}<div className="item-actions"><span className="source-tag">{String(item.source_locator.role || item.kind)}</span><button className="text-button" onClick={() => { setOrganizingItemId(item.id); setPage('organize') }}>整理</button>{item.kind === 'quick_note' ? <><button className="text-button" onClick={() => setEditingNoteId(item.id)}>编辑笔记</button><button className="text-button" onClick={() => void exportItem(item)}>导出 Markdown ↗</button><button className="text-button danger-text" onClick={() => void deleteItem(item)}>删除笔记</button></> : <><button className="text-button" onClick={() => void exportItem(item)}>导出 Markdown ↗</button><button className="text-button" onClick={() => void downloadSource(item)}>下载原件 ↗</button><button className="text-button danger-text" onClick={() => void deleteItem(item)}>删除导入来源</button></>}</div></div></article> })}{visibleItems.length === 0 && <div className="empty-state"><span>◷</span><strong>时间线已就绪</strong><p>添加快速笔记，或导入选中的 Markdown、聊天、日历与照片后会显示在这里。</p></div>}</div>{timelineCursor && <button className="secondary full" onClick={() => void loadMoreTimeline()}>加载更多时间线</button>}</div><aside className="panel source-rail"><div className="panel-heading"><div><p className="eyebrow">已连接来源</p><h2>Sources</h2></div><span className="count-pill">{sources.length}</span></div>{sources.length === 0 && <p className="muted">选择的来源会显示在这里。</p>}{sources.slice(0, 5).map((source) => <div className="source-row" key={source.id}><span className="source-icon">{source.kind === 'photo' ? '▧' : source.kind === 'chatgpt_export' ? '✳' : '▤'}</span><div><strong>{source.name}</strong><small>{source.status.replace('_', ' ')}</small></div><span className={source.status === 'active' ? 'status-dot' : 'status-dot paused'} /></div>)}<button className="secondary full" onClick={() => setPage('account')}>管理来源</button></aside></section></>}
       {page === 'search' && <section className="panel search-page">
         <div className="panel-heading"><div><p className="eyebrow">统一搜索</p><h2>找回你保存的一切</h2></div>{searchResults && <span className="count-pill">{searchResults.index_backend}</span>}</div>
@@ -812,7 +1016,7 @@ function App() {
       {page === 'reviews' && schedule && <ReviewSchedulePanel schedule={schedule} timezone={user?.timezone || 'UTC'} providers={providers} onSave={saveSchedule} readyReview={readyReview} onOpenReview={(review) => document.getElementById('review-' + review.id)?.scrollIntoView({ behavior: 'smooth', block: 'center' })} />}
       {page === 'reviews' && dueReminders.length > 0 && <DueRemindersPanel reminders={dueReminders} onAction={updateReminder} />}
       {page === 'reviews' && <section className="review-grid"><div className="panel"><div className="panel-heading"><div><p className="eyebrow">复盘时刻</p><h2>开始周复盘</h2></div></div><p className="muted">从这段时间线生成可编辑草稿。每条生成事实都能回到来源核对。</p><form className="review-form" onSubmit={generateReview}><label>从<input name="start" type="date" required /></label><label>至 <small>（不含）</small><input name="end" type="date" required /></label><label className="check-row"><input type="checkbox" checked={externalModel} disabled={!selectedReviewProvider?.available || !selectedReviewProvider?.consent.consented} onChange={(event) => setExternalModel(event.target.checked)} /><span>使用外部 AI 模型<br /><small>请先在设置中同意所选提供方。</small></span></label>{externalModel && <><label>提供方<select value={reviewProviderId} onChange={(event) => { setReviewProviderId(event.target.value); setReviewModel('') }}>{providers.map((provider) => <option value={provider.id} key={provider.id}>{provider.id}{provider.consent.consented ? ' · 已同意' : ''}</option>)}</select></label><label>模型<select value={reviewModel} onChange={(event) => setReviewModel(event.target.value)}><option value="">默认模型</option>{(selectedReviewProvider?.models || []).map((name) => <option value={name} key={name}>{name}</option>)}</select></label></>}<button className="primary" disabled={busy}>{busy ? '准备中…' : '生成草稿'}</button></form><div className="subsection"><div className="panel-heading"><h2>提醒</h2></div><form className="reminder-form" onSubmit={createReminder}><input name="title" placeholder="需要跟进什么？" required /><input name="due_at" type="datetime-local" aria-label="提醒到期时间" /><button className="secondary">添加提醒</button></form>{reminders.map((reminder) => <div className="reminder-row" id={'reminder-' + reminder.id} key={reminder.id}><div><strong>{reminder.title}</strong><small>{reminder.due_at ? new Date(reminder.due_at).toLocaleString() : '无到期时间'} · {reminder.status}</small></div>{reminder.status !== 'completed' && reminder.status !== 'cancelled' && <><button className="text-button" onClick={() => void updateReminder(reminder, 'completed')}>完成</button><button className="text-button" onClick={() => void updateReminder(reminder, 'snoozed')}>稍后提醒</button><button className="text-button" onClick={() => void updateReminder(reminder, 'cancelled')}>忽略</button></>}</div>)}</div></div><div className="review-list">{reviews.map((review) => <ReviewCard key={review.id + (review.final_text || "")} review={review} token={token} onSave={saveReview} onOpenSource={openSource} onExport={downloadReview} onCreateReminder={createReminderFromSuggestion} onUpdateSuggestion={updateSuggestion} />)}{reviews.length === 0 && <div className="panel empty-state"><span>✳</span><strong>复盘会显示在这里</strong><p>选择日期范围后，从有来源的时间线条目生成草稿。</p></div>}</div></section>}
-      {page === 'account' && <section className="account-grid"><div className="panel"><p className="eyebrow">账户</p><h2>{user?.email}</h2><p className="muted">时区：{user?.timezone}</p><div className="subsection"><p className="eyebrow">模型数据同意</p>{disclosure?.available ? <><p className="muted">提供方：{disclosure.provider} · 模型：{disclosure.model}</p><p className="muted">发送内容：{disclosure.data_sent}</p><p className="muted">保留说明：{disclosure.retention}</p><p className="muted">配置估算：每百万输入 token ${disclosure.input_cost_per_million_usd}，每百万输出 token ${disclosure.output_cost_per_million_usd}。单次预算检查：${disclosure.max_cost_per_call_usd}。调用失败或超出估算仍可能产生提供方费用。</p>{disclosure.privacy_url && <p><a href={disclosure.privacy_url} target="_blank" rel="noreferrer">提供方隐私条款 ↗</a></p>}<label className="check-row consent-check"><input type="checkbox" checked={consentAcknowledged} onChange={(event) => setConsentAcknowledged(event.target.checked)} /><span>我已阅读上述提供方与数据处理说明。</span></label><p className="small-note">当前同意状态：{user?.ai_consent_at ? '已启用' : '未启用'}</p><div className="button-row"><button className="primary" disabled={!consentAcknowledged || Boolean(user?.ai_consent_at)} onClick={() => void setModelConsent(true)}>启用外部 AI</button><button className="secondary" disabled={!user?.ai_consent_at} onClick={() => void setModelConsent(false)}>关闭</button></div></> : <p className="muted">未配置外部模型。模板复盘仍可用，不会向模型提供方发送复盘数据。</p>}</div><div className="subsection"><p className="eyebrow">你的数据</p><p className="muted">下载可移植归档，或永久删除账号与已存记录。</p><div className="button-row"><button className="secondary" onClick={() => void downloadAccountArchive()}>下载归档</button><button className="danger" onClick={() => void deleteAccount()}>删除账号</button></div></div></div><div className="panel"><div className="panel-heading"><div><p className="eyebrow">你的选择</p><h2>管理来源</h2></div></div>{sources.map((source) => <div className="manage-source" key={source.id}><div><strong>{source.name}</strong><small>{source.kind.replace('_', ' ')} · {source.status}</small><p className="source-scope">{sourceScopeDescription(source)}</p><small>上次导入：{source.last_sync_at ? new Date(source.last_sync_at).toLocaleString() : '从未'}</small><small>云端抽取：{source.cloud_consent_at ? '已允许' : '未启用'}</small></div><div className="button-row">{source.status === 'active' && <button className="text-button" onClick={() => void sourceAction(source, 'pause')}>暂停</button>}{source.status === 'paused' && <button className="text-button" onClick={() => void sourceAction(source, 'resume')}>恢复</button>}{source.status !== 'revoked' && <button className="text-button" onClick={() => void sourceAction(source, 'revoke')}>撤回</button>}<button className="text-button" disabled={source.status === 'revoked' || source.status === 'deleting'} onClick={() => void setCloudConsent(source, !source.cloud_consent_at)}>{source.cloud_consent_at ? '关闭云端抽取' : '允许云端抽取'}</button><button className="text-button danger-text" onClick={() => void sourceAction(source, 'delete')}>删除数据</button></div></div>)}{sources.length === 0 && <p className="muted">还没有来源。</p>}</div></section>}
+      {page === 'account' && <section className="account-grid"><div className="panel"><p className="eyebrow">账户</p><h2>{desktop ? '本机个人资料' : user?.email}</h2><p className="muted">时区：{user?.timezone}</p><div className="subsection"><p className="eyebrow">模型数据同意</p>{disclosure?.available ? <><p className="muted">提供方：{disclosure.provider} · 模型：{disclosure.model}</p><p className="muted">发送内容：{disclosure.data_sent}</p><p className="muted">保留说明：{disclosure.retention}</p><p className="muted">配置估算：每百万输入 token ${disclosure.input_cost_per_million_usd}，每百万输出 token ${disclosure.output_cost_per_million_usd}。单次预算检查：${disclosure.max_cost_per_call_usd}。调用失败或超出估算仍可能产生提供方费用。</p>{disclosure.privacy_url && <p><a href={disclosure.privacy_url} target="_blank" rel="noreferrer">提供方隐私条款 ↗</a></p>}<label className="check-row consent-check"><input type="checkbox" checked={consentAcknowledged} onChange={(event) => setConsentAcknowledged(event.target.checked)} /><span>我已阅读上述提供方与数据处理说明。</span></label><p className="small-note">当前同意状态：{user?.ai_consent_at ? '已启用' : '未启用'}</p><div className="button-row"><button className="primary" disabled={!consentAcknowledged || Boolean(user?.ai_consent_at)} onClick={() => void setModelConsent(true)}>启用外部 AI</button><button className="secondary" disabled={!user?.ai_consent_at} onClick={() => void setModelConsent(false)}>关闭</button></div></> : <p className="muted">未配置外部模型。模板复盘仍可用，不会向模型提供方发送复盘数据。</p>}</div><div className="subsection"><p className="eyebrow">你的数据</p><p className="muted">下载可移植归档，或永久删除账号与已存记录。</p><div className="button-row"><button className="secondary" onClick={() => void downloadAccountArchive()}>下载归档</button><button className="danger" onClick={() => void deleteAccount()}>删除账号</button></div></div></div><div className="panel"><div className="panel-heading"><div><p className="eyebrow">你的选择</p><h2>管理来源</h2></div></div>{sources.map((source) => <div className="manage-source" key={source.id}><div><strong>{source.name}</strong><small>{source.kind.replace('_', ' ')} · {source.status}</small><p className="source-scope">{sourceScopeDescription(source)}</p><small>上次导入：{source.last_sync_at ? new Date(source.last_sync_at).toLocaleString() : '从未'}</small><small>云端抽取：{source.cloud_consent_at ? '已允许' : '未启用'}</small></div><div className="button-row">{source.status === 'active' && <button className="text-button" onClick={() => void sourceAction(source, 'pause')}>暂停</button>}{source.status === 'paused' && <button className="text-button" onClick={() => void sourceAction(source, 'resume')}>恢复</button>}{source.status !== 'revoked' && <button className="text-button" onClick={() => void sourceAction(source, 'revoke')}>撤回</button>}<button className="text-button" disabled={source.status === 'revoked' || source.status === 'deleting'} onClick={() => void setCloudConsent(source, !source.cloud_consent_at)}>{source.cloud_consent_at ? '关闭云端抽取' : '允许云端抽取'}</button><button className="text-button danger-text" onClick={() => void sourceAction(source, 'delete')}>删除数据</button></div></div>)}{sources.length === 0 && <p className="muted">还没有来源。</p>}</div></section>}
       {page === 'account' && <ModelProviderSettings token={token} providers={providers} onChanged={() => void refresh()} onError={setError} onNotice={setNotice} />}
       {page === 'account' && <PluginSettingsPanel token={token} onError={setError} onNotice={setNotice} />}
       {page === 'account' && <AgentActionsPanel token={token} onError={setError} onNotice={setNotice} />}
@@ -1100,6 +1304,12 @@ function DueRemindersPanel({ reminders, onAction }: { reminders: Reminder[]; onA
   const [notificationMessage, setNotificationMessage] = useState('')
   const [enablingNotification, setEnablingNotification] = useState(false)
   async function enableNotifications() {
+    if (desktop) {
+      const enable = localStorage.getItem('lifeos-desktop-notifications') !== 'enabled'
+      localStorage.setItem('lifeos-desktop-notifications', enable ? 'enabled' : 'disabled')
+      setNotificationMessage(enable ? 'Windows 通知已启用。' : 'Windows 通知已关闭。')
+      return
+    }
     setEnablingNotification(true)
     const result = await enableDueNotifications(reminders.length, '/reviews')
     setNotificationMessage(result.status === 'enabled' || result.status === 'already-enabled' ? '浏览器通知已启用。' : 'message' in result ? result.message : '通知状态未知。')
@@ -1107,7 +1317,9 @@ function DueRemindersPanel({ reminders, onAction }: { reminders: Reminder[]; onA
   }
   return <section className="panel due-reminders">
     <div className="panel-heading"><div><p className="eyebrow">到期提醒</p><h2>需要跟进的承诺</h2></div><span className="count-pill">{reminders.length}</span></div>
-    <div className="notification-actions"><button className="secondary" disabled={enablingNotification} onClick={() => void enableNotifications()}>{enablingNotification ? '请求授权中…' : '启用浏览器通知'}</button><span className="small-note">需明确授权；拒绝不影响应用内提醒。</span></div>
+    <div className="notification-actions"><button className="secondary" disabled={enablingNotification} onClick={() => void enableNotifications()}>{desktop
+      ? (localStorage.getItem('lifeos-desktop-notifications') === 'enabled' ? '关闭 Windows 通知' : '启用 Windows 通知')
+      : enablingNotification ? '请求授权中…' : '启用浏览器通知'}</button><span className="small-note">应用内提醒始终可用。</span></div>
     {notificationMessage && <p className="small-note" role="status">{notificationMessage}</p>}
     {reminders.map((reminder) => <div className="reminder-row" key={reminder.id}><div><strong>{reminder.title}</strong><small>{reminder.due_at ? new Date(reminder.due_at).toLocaleString() : '无到期时间'} · {reminder.status}</small></div><div className="button-row"><button className="text-button" onClick={() => onAction(reminder, 'completed')}>完成</button><button className="text-button" onClick={() => onAction(reminder, 'snoozed')}>稍后提醒</button></div></div>)}
   </section>
@@ -1199,7 +1411,7 @@ function PhotoImage({ itemId, token }: { itemId: string; token: string }) {
   useEffect(() => {
     let objectUrl = ''
     let active = true
-    void fetch(API + '/items/' + itemId + '/raw', { headers: { Authorization: 'Bearer ' + token } }).then((response) => response.ok ? response.blob() : null).then((blob) => {
+    void apiFetch('/items/' + itemId + '/raw', { headers: { Authorization: 'Bearer ' + token } }).then((response) => response.ok ? response.blob() : null).then((blob) => {
       if (blob && active) { objectUrl = URL.createObjectURL(blob); setUrl(objectUrl) }
     }).catch(() => undefined)
     return () => { active = false; if (objectUrl) URL.revokeObjectURL(objectUrl) }
@@ -1911,7 +2123,7 @@ function AskPanel({ token, sources, onError, onNotice, onOpenCitation }: { token
 
   async function exportThread(threadId: string, format: 'markdown' | 'json') {
     try {
-      const response = await fetch(API + '/qa/threads/' + threadId + '/export?format=' + format, { headers: { Authorization: 'Bearer ' + token } })
+      const response = await apiFetch('/qa/threads/' + threadId + '/export?format=' + format, { headers: { Authorization: 'Bearer ' + token } })
       if (!response.ok) throw new Error('导出的问答历史不可用。')
       const blob = await response.blob()
       const link = document.createElement('a')

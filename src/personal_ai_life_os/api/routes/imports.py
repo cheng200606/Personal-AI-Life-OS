@@ -6,7 +6,7 @@ from typing import Annotated
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
-from sqlalchemy import select
+from sqlalchemy import or_, select
 
 from personal_ai_life_os.api.deps import CurrentUserDep, SessionDep
 from personal_ai_life_os.api.schemas import (
@@ -112,6 +112,7 @@ def import_file(
             source_timezone=captured_timezone,
             user_timezone=user.timezone,
             defer_photo_ocr=(source.kind == "photo" and config.processing_mode == "worker"),
+            desktop_config=config if config.app_env == "desktop" else None,
         )
     except IngestionFailure as error:
         raise HTTPException(
@@ -120,7 +121,10 @@ def import_file(
         ) from error
     job_ids = list(
         session.scalars(
-            select(BackgroundJob.id).where(BackgroundJob.sync_run_id == run.id)
+            select(BackgroundJob.id).where(or_(
+                BackgroundJob.sync_run_id == run.id,
+                BackgroundJob.source_item_id.in_([item.id for item in items if item.sync_run_id == run.id]),
+            ))
         )
     )
     return {

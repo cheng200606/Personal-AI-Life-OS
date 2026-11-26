@@ -19,6 +19,7 @@ from personal_ai_life_os.api.schemas import (
 )
 from personal_ai_life_os.config import Settings
 from personal_ai_life_os.models import (
+    BackgroundJob,
     SourceConnection,
     SourceItem,
     SyncRun,
@@ -193,6 +194,16 @@ def update_source_cloud_consent(
     source.cloud_consent_version = (
         payload.consent_version if payload.enabled else None
     )
+    if config.app_env == "desktop" and not payload.enabled:
+        for job in session.scalars(select(BackgroundJob).where(
+            BackgroundJob.source_id == source.id, BackgroundJob.kind == "desktop_analysis",
+            BackgroundJob.status.in_(("queued", "running")),
+        )):
+            job.status = "cancelled"
+            job.error_code = "source_consent_required"
+            job.completed_at = datetime.now(UTC)
+            job.lease_expires_at = None
+            job.worker_id = None
     session.commit()
     session.refresh(source)
     return source

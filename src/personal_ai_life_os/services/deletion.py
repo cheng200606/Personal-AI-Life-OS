@@ -5,11 +5,14 @@ import logging
 from datetime import UTC, datetime
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session, sessionmaker
 
 from personal_ai_life_os.models import (
     BackgroundJob,
+    DesktopDraft,
+    DesktopFolderFile,
+    GraphEvidence,
     MemoryRecord,
     Reminder,
     Review,
@@ -44,6 +47,8 @@ def request_item_deletions(
     item_ids: set[str],
     *,
     tombstone_id: str | None = None,
+    desktop_file_id: str | None = None,
+    object_keys: set[str] | None = None,
 ) -> dict:
     if not item_ids:
         raise ValueError("At least one item ID is required.")
@@ -55,6 +60,9 @@ def request_item_deletions(
         "item_ids": normalized_ids,
         "requested_at": datetime.now(UTC).isoformat(),
     }
+    if desktop_file_id:
+        document["desktop_file_id"] = str(UUID(desktop_file_id))
+        document["object_keys"] = sorted(object_keys or set())
     store.write_item_deletion_tombstone(owner_id, key_id, json.dumps(document).encode("utf-8"))
     return document
 
@@ -77,6 +85,39 @@ def pending_item_deletion(store: ObjectStore, tombstone_id: str) -> dict | None:
         if document.get("tombstone_id") == tombstone_id and document.get("item_ids"):
             return document
     return None
+
+
+def erase_desktop_file_records(session: Session, owner_id: str, items: list[SourceItem]) -> None:
+    ids = {item.id for item in items}
+    if not ids:
+        return
+    scrub_item_derivatives(session, owner_id, ids, commit=False)
+    for item in items:
+        item.is_current = False
+        item.deleted_at = item.deleted_at or datetime.now(UTC)
+        item.title = ""
+        item.content_text = ""
+        item.object_key = ""
+        item.source_locator = {}
+        item.metadata_json = {}
+    session.execute(update(DesktopDraft).where(DesktopDraft.item_id.in_(ids)).values(
+        body="", quote="", status="invalidated",
+    ))
+    session.execute(update(GraphEvidence).where(GraphEvidence.source_item_id.in_(ids)).values(
+        quote="", availability="deleted",
+    ))
+
+
+def remove_desktop_file_objects(session: Session, store: ObjectStore, document: dict) -> None:
+    for key in document.get("object_keys", []):
+        if not isinstance(key, str) or not key.startswith(f"owners/{document['owner_id']}/"):
+            raise ValueError("Invalid desktop deletion journal object key.")
+        shared = session.scalar(select(SourceItem.id).where(
+            SourceItem.object_key == key, SourceItem.deleted_at.is_(None),
+        ).limit(1))
+        if not shared:
+            store.delete(key)
+            session.execute(update(SyncRun).where(SyncRun.object_key == key).values(object_key=None))
 
 
 def request_source_deletion(store: ObjectStore, owner_id: str, source_id: str) -> dict:
@@ -196,6 +237,7 @@ def replay_deletion_tombstones(session_factory: sessionmaker, store: ObjectStore
             owner_id = str(UUID(document["owner_id"]))
             source_id = str(UUID(document["source_id"])) if document.get("source_id") else None
             raw_item_ids = document.get("item_ids")
+            desktop_file_id = str(UUID(document["desktop_file_id"])) if "desktop_file_id" in document else None
             is_item_document = "item_ids" in document or "tombstone_id" in document
             if is_item_document:
                 if source_id or not isinstance(raw_item_ids, list) or not raw_item_ids:
@@ -222,13 +264,20 @@ def replay_deletion_tombstones(session_factory: sessionmaker, store: ObjectStore
                     for item in items:
                         item.is_current = False
                         item.deleted_at = item.deleted_at or datetime.now(UTC)
-                    scrub_item_derivatives(session, owner_id, item_ids, commit=False)
-                    mark_item_evidence_unavailable(
-                        session,
-                        owner_id=owner_id,
-                        item_ids=item_ids,
-                        availability="deleted",
-                    )
+                    if desktop_file_id:
+                        erase_desktop_file_records(session, owner_id, items)
+                        entry = session.get(DesktopFolderFile, desktop_file_id)
+                        if entry:
+                            source = session.get(SourceConnection, entry.source_id)
+                            if source and source.owner_id == owner_id:
+                                entry.status = "deleted"
+                        session.flush()
+                        remove_desktop_file_objects(session, store, document)
+                    else:
+                        scrub_item_derivatives(session, owner_id, item_ids, commit=False)
+                        mark_item_evidence_unavailable(
+                            session, owner_id=owner_id, item_ids=item_ids, availability="deleted",
+                        )
                     session.commit()
                 if not document.get("completed_at"):
                     complete_item_deletion(store, owner_id, document)

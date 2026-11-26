@@ -176,6 +176,34 @@ class SyncRun(Base):
     source: Mapped[SourceConnection] = relationship(back_populates="sync_runs")
 
 
+class DesktopFolder(Base):
+    __tablename__ = "desktop_folders"
+
+    source_id: Mapped[str] = mapped_column(
+        Uuid(as_uuid=False), ForeignKey("source_connections.id", ondelete="CASCADE"), primary_key=True,
+    )
+    path: Mapped[str] = mapped_column(Text)
+    path_key: Mapped[str] = mapped_column(String(64), unique=True)
+    kind: Mapped[str] = mapped_column(String(24))
+    scan_status: Mapped[str] = mapped_column(String(24), default="waiting")
+    last_scan_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
+
+
+class DesktopFolderFile(Base):
+    __tablename__ = "desktop_folder_files"
+    __table_args__ = (UniqueConstraint("source_id", "file_key", name="uq_desktop_folder_file"),)
+
+    id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=new_id)
+    source_id: Mapped[str] = mapped_column(
+        Uuid(as_uuid=False), ForeignKey("desktop_folders.source_id", ondelete="CASCADE"), index=True,
+    )
+    file_key: Mapped[str] = mapped_column(String(64))
+    relative_path: Mapped[str] = mapped_column(Text)
+    fingerprint: Mapped[str] = mapped_column(String(160))
+    status: Mapped[str] = mapped_column(String(24), default="active")
+    conversation_ids: Mapped[list] = mapped_column(JSON, default=list)
+
+
 class SourceItem(Base):
     __tablename__ = "source_items"
     __table_args__ = (
@@ -797,6 +825,32 @@ class BackgroundJob(Base):
     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow, onupdate=utcnow)
     completed_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
+
+
+class DesktopDraft(Base):
+    __tablename__ = "desktop_drafts"
+    __table_args__ = (
+        UniqueConstraint("job_id", "ordinal", name="uq_desktop_draft_job_ordinal"),
+        Index("ix_desktop_drafts_owner_status", "owner_id", "status"),
+    )
+
+    id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=new_id)
+    owner_id: Mapped[str] = mapped_column(
+        Uuid(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"),
+    )
+    job_id: Mapped[str] = mapped_column(
+        Uuid(as_uuid=False), ForeignKey("background_jobs.id", ondelete="CASCADE"),
+    )
+    item_id: Mapped[str] = mapped_column(
+        Uuid(as_uuid=False), ForeignKey("source_items.id", ondelete="CASCADE"), index=True,
+    )
+    ordinal: Mapped[int] = mapped_column(Integer)
+    kind: Mapped[str] = mapped_column(String(24))
+    body: Mapped[str] = mapped_column(Text)
+    quote: Mapped[str] = mapped_column(Text)
+    confidence: Mapped[float] = mapped_column(Float)
+    status: Mapped[str] = mapped_column(String(24), default="pending")
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
 
 
 class Reminder(Base):

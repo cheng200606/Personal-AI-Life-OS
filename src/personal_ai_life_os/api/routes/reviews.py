@@ -31,7 +31,7 @@ from personal_ai_life_os.models import ModelRun, Review, ReviewVersion, SourceCo
 from personal_ai_life_os.services.graph_extraction import monthly_spend
 from personal_ai_life_os.services.ingestion import response_item
 from personal_ai_life_os.services.jobs import enqueue_background_job
-from personal_ai_life_os.services.model_consent import has_consent
+from personal_ai_life_os.services.model_consent import desktop_source_authorized, has_consent
 from personal_ai_life_os.services.model_providers import (
     ModelProvider,
     ModelProviderError,
@@ -373,6 +373,11 @@ def generate_review(
     draft = _template(items)
     config: Settings = request.app.state.settings
     if payload.use_external_model:
+        if not all(desktop_source_authorized(item.source, config) for item in items):
+            raise HTTPException(
+                409, detail={"code": "source_consent_required",
+                             "message": "Every source in this period needs authorization for an external review."},
+            )
         if payload.provider_id is None and config.model_provider != "openai":
             raise HTTPException(
                 409,
@@ -395,7 +400,11 @@ def generate_review(
         if reserved_cost is None:
             raise HTTPException(409, detail={"code": "model_cost_unconfigured", "message": "Configure current provider pricing before using external AI."})
         monthly = monthly_spend(session, user.id)
-        remaining = config.model_monthly_budget_usd - monthly if config.model_monthly_budget_usd > 0 else reserved_cost
+        remaining = (
+            config.model_monthly_budget_usd - monthly
+            if config.model_monthly_budget_usd > 0 or config.app_env == "desktop"
+            else reserved_cost
+        )
         within_budget = reserved_cost <= config.model_max_cost_per_call_usd and reserved_cost <= remaining
         if config.processing_mode == "worker" and within_budget:
             draft = _template(items)

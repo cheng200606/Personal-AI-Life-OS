@@ -735,7 +735,8 @@ def extract_selected_items(
             409,
         )
     spent = monthly_spend(session, owner_id)
-    if config.model_monthly_budget_usd > 0 and spent + reserved_cost > config.model_monthly_budget_usd:
+    if ((config.model_monthly_budget_usd > 0 or config.app_env == "desktop")
+            and spent + reserved_cost > config.model_monthly_budget_usd):
         raise GraphExtractionError(
             "model_budget_exceeded",
             "This extraction would exceed the monthly model budget.",

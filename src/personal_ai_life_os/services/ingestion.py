@@ -13,6 +13,7 @@ from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session
 
+from personal_ai_life_os.config import Settings
 from personal_ai_life_os.models import (
     SourceConnection,
     SourceItem,
@@ -375,6 +376,9 @@ def ingest_file(
     source_timezone: str | None = None,
     user_timezone: str = "UTC",
     defer_photo_ocr: bool = False,
+    desktop_file_key: str | None = None,
+    desktop_relative_path: str | None = None,
+    desktop_config: Settings | None = None,
 ) -> tuple[SyncRun, list[SourceItem]]:
     if source.owner_id != owner_id:
         raise IngestionFailure("source_not_found", "The selected source was not found.", 404)
@@ -414,6 +418,17 @@ def ingest_file(
             defer_photo_ocr,
         )
         run.parser_version = parser_version
+        if desktop_file_key is not None:
+            parsed_items = [
+                replace(
+                    item,
+                    external_id=f"desktop:{desktop_file_key}:" + hashlib.sha256(
+                        item.external_id.encode("utf-8"),
+                    ).hexdigest(),
+                    source_locator={**item.source_locator, "file": desktop_relative_path},
+                )
+                for item in parsed_items
+            ]
         run.items_seen = len(parsed_items)
         stored_hash = hashlib.sha256(stored_payload).hexdigest()
         object_key = f"owners/{owner_id}/sources/{source.id}/{stored_hash}/source.bin"
@@ -495,6 +510,8 @@ def ingest_file(
                         )
                     )
                     if existing is not None:
+                        if desktop_file_key and existing.deleted_at is None:
+                            existing.is_current = True
                         persisted.append(existing)
 
         pending_ocr_items = [
@@ -514,6 +531,16 @@ def ingest_file(
                 payload={"source_item_id": item.id},
             )
             item.metadata_json = {**item.metadata_json, "ocr_job_id": job.id}
+        if (desktop_config is not None and desktop_config.app_env == "desktop"
+                and source.cloud_consent_at
+                and source.cloud_consent_version == desktop_config.graph_cloud_consent_version):
+            for item in persisted:
+                if item.sync_run_id == run.id and item.content_text.strip() and item.kind != "photo":
+                    enqueue_background_job(
+                        session, owner_id=owner_id, source_id=source.id, source_item_id=item.id,
+                        kind="desktop_analysis", dedupe_key=f"desktop-analysis:{item.id}",
+                        payload={"provider": "desktop"},
+                    )
         if pending_ocr_items:
             run.status = "processing"
             run.completed_at = None

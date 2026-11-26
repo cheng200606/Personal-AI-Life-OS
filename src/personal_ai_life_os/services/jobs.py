@@ -36,8 +36,9 @@ logger = logging.getLogger(__name__)
 class RetryableJobError(Exception):
     """A bounded task attempt failed and may be retried with the same idempotency key."""
 
-    def __init__(self, code: str):
+    def __init__(self, code: str, *, retryable: bool = True):
         self.code = code
+        self.retryable = retryable
         super().__init__(code)
 
 
@@ -178,7 +179,7 @@ def cancel_model_jobs_for_owner(
         session.scalars(
             select(BackgroundJob).where(
                 BackgroundJob.owner_id == owner_id,
-                BackgroundJob.kind.in_(("photo_description", "weekly_review")),
+                BackgroundJob.kind.in_(("photo_description", "weekly_review", "desktop_analysis")),
                 BackgroundJob.status.in_(("queued", "running")),
             )
         )
@@ -195,7 +196,7 @@ def cancel_model_jobs_for_owner(
         job.completed_at = now
         job.lease_expires_at = None
         job.worker_id = None
-        if job.source_item_id:
+        if job.source_item_id and job.kind == "photo_description":
             item = session.get(SourceItem, job.source_item_id)
             if item and item.deleted_at is None:
                 item.metadata_json = {**item.metadata_json, "description_status": "cancelled"}
@@ -262,7 +263,7 @@ def retry_background_job(session: Session, job: BackgroundJob) -> None:
             run.items_failed = 0
             run.error_code = None
             run.completed_at = None
-    if job.source_item_id:
+    if job.source_item_id and job.kind in {"photo_ocr", "photo_description"}:
         item = session.get(SourceItem, job.source_item_id)
         if item:
             key = "description_status" if job.kind == "photo_description" else "ocr_status"
@@ -637,7 +638,7 @@ def _execute_weekly_review(session_factory: sessionmaker, job: JobEnvelope, conf
         _template,
     )
     from personal_ai_life_os.services.graph_extraction import monthly_spend
-    from personal_ai_life_os.services.model_consent import has_consent
+    from personal_ai_life_os.services.model_consent import desktop_source_authorized, has_consent
     from personal_ai_life_os.services.model_providers import (
         ModelProviderError,
         provider_cost,
@@ -675,12 +676,13 @@ def _execute_weekly_review(session_factory: sessionmaker, job: JobEnvelope, conf
             and has_consent(session, user, provider)
             and (provider.api_key or provider.local)
             and user.deletion_requested_at is None
+            and all(desktop_source_authorized(item.source, config) for item in items)
         )
         review_id = review.id
         monthly = monthly_spend(session, user.id)
         remaining = (
             config.model_monthly_budget_usd - monthly
-            if config.model_monthly_budget_usd > 0
+            if config.model_monthly_budget_usd > 0 or config.app_env == "desktop"
             else Decimal(999999999)
         )
         provider_id = provider.id if provider else str((job.payload or {}).get("provider") or DEFAULT_PROVIDER_ID)
@@ -809,6 +811,10 @@ def run_background_job_once(
             result = _execute_photo_description(session_factory, store, job, config)
         elif job.kind == "weekly_review":
             result = _execute_weekly_review(session_factory, job, config)
+        elif job.kind == "desktop_analysis":
+            from personal_ai_life_os.services.desktop_analysis import execute_desktop_analysis
+
+            result = execute_desktop_analysis(session_factory, job, config)
         else:
             raise RetryableJobError("unsupported_job_type")
     except RetryableJobError as error:
@@ -816,7 +822,7 @@ def run_background_job_once(
             current = _current_claim(session, job)
             if current is None or current.status != "running":
                 return True
-            if current.attempt_count >= current.max_attempts:
+            if not error.retryable or current.attempt_count >= current.max_attempts:
                 _fail_terminal(session, current, error.code)
             else:
                 current.status = "queued"

@@ -1,0 +1,47 @@
+name: Windows desktop
+
+on:
+  pull_request:
+    paths:
+      - "desktop/**"
+      - "src/**"
+      - "web/**"
+      - "tests/test_desktop_mvp.py"
+      - "migrations/**"
+      - "uv.lock"
+      - "pyproject.toml"
+      - ".github/workflows/desktop.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  candidate:
+    runs-on: windows-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: rustup toolchain install 1.100.0 --profile minimal
+      - run: rustup default 1.100.0
+      - run: npm ci
+        working-directory: web
+      - run: uv sync --locked --group desktop
+      - run: uv run --frozen --group desktop pytest -q tests/test_desktop_mvp.py
+      - run: ./desktop/build-installer.ps1 -SevenZip "C:/Program Files/7-Zip/7z.exe"
+      - run: ./desktop/smoke-installer.ps1
+      - run: Get-FileHash desktop/src-tauri/target/release/bundle/nsis/*.exe
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lifeos-windows-x64-candidate
+          path: desktop/src-tauri/target/release/bundle/nsis/*.exe
+          if-no-files-found: error

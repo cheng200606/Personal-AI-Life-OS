@@ -1,5 +1,7 @@
 # MVP Product Requirements
 
+The Windows single-user distribution follows the [desktop MVP plan](../roadmap/desktop-mvp.md), including local profile setup, directory authorization, chat selection, and desktop acceptance criteria.
+
 ## Product direction
 
 Personal AI Life OS helps people build a useful, searchable memory of work, learning, and life. It connects selected information sources, preserves provenance, and prepares summaries and reviews users can inspect and edit.

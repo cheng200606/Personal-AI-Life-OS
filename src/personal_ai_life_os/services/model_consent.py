@@ -5,7 +5,8 @@ from datetime import UTC, datetime
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from personal_ai_life_os.models import ModelConsent, User
+from personal_ai_life_os.config import Settings
+from personal_ai_life_os.models import ModelConsent, SourceConnection, User
 from personal_ai_life_os.services.model_providers import (
     DEFAULT_PROVIDER_ID,
     ModelProvider,
@@ -19,6 +20,13 @@ def consent_record(session: Session, owner_id: str, provider_id: str) -> ModelCo
             ModelConsent.owner_id == owner_id,
             ModelConsent.provider_id == provider_id,
         )
+    )
+
+
+def desktop_source_authorized(source: SourceConnection, config: Settings) -> bool:
+    return config.app_env != "desktop" or (
+        source.status == "active" and source.cloud_consent_at is not None
+        and source.cloud_consent_version == config.graph_cloud_consent_version
     )
 
 

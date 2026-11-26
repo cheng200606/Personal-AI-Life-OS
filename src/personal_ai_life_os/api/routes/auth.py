@@ -1,10 +1,13 @@
 """Account registration, login, and explicit model consent."""
 
 import hmac
+from secrets import token_urlsafe
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import APIRouter, HTTPException, Request, status
+from pydantic import BaseModel, Field
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
 from personal_ai_life_os.api.deps import CurrentUserDep, SessionDep
 from personal_ai_life_os.api.schemas import (
@@ -27,6 +30,50 @@ from personal_ai_life_os.services.model_providers import (
 from personal_ai_life_os.services.model_usage import model_rates_configured
 
 router = APIRouter(prefix="/auth", tags=["authentication"])
+DESKTOP_PROFILE_EMAIL = "local-profile@lifeos.invalid"
+
+
+class DesktopProfileRequest(BaseModel):
+    timezone: str = Field(min_length=1, max_length=100)
+
+
+@router.get("/desktop-profile", response_model=TokenResponse)
+def get_desktop_profile(request: Request, session: SessionDep) -> TokenResponse:
+    config: Settings = request.app.state.settings
+    if config.app_env != "desktop":
+        raise HTTPException(status_code=404, detail="Not found.")
+    user = session.scalar(select(User).where(User.email == DESKTOP_PROFILE_EMAIL))
+    if user is None:
+        raise HTTPException(status_code=404, detail="Create a local profile to continue.")
+    return _token_response(user, config)
+
+
+@router.post("/desktop-profile", response_model=TokenResponse)
+def desktop_profile(
+    payload: DesktopProfileRequest, request: Request, session: SessionDep,
+) -> TokenResponse:
+    config: Settings = request.app.state.settings
+    if config.app_env != "desktop":
+        raise HTTPException(status_code=404, detail="Not found.")
+    profile_query = select(User).where(User.email == DESKTOP_PROFILE_EMAIL)
+    user = session.scalar(profile_query)
+    if user is None:
+        try:
+            ZoneInfo(payload.timezone)
+        except (ValueError, ZoneInfoNotFoundError) as error:
+            raise HTTPException(status_code=422, detail="Use a valid IANA timezone name.") from error
+        user = User(
+            email=DESKTOP_PROFILE_EMAIL,
+            password_hash=hash_password(token_urlsafe(32)),
+            timezone=payload.timezone,
+        )
+        session.add(user)
+        try:
+            session.commit()
+        except IntegrityError:
+            session.rollback()
+            user = session.scalars(profile_query).one()
+    return _token_response(user, config)
 
 
 def _check_registration(config: Settings, invite_code: str | None) -> None:
@@ -91,6 +138,8 @@ def register(
 @router.post("/login", response_model=TokenResponse)
 def login(payload: LoginRequest, request: Request, session: SessionDep) -> TokenResponse:
     config: Settings = request.app.state.settings
+    if config.app_env == "desktop":
+        raise HTTPException(status_code=404, detail="Not found.")
     user = session.scalar(select(User).where(User.email == payload.email))
     if user is None or not verify_password(payload.password, user.password_hash):
         raise HTTPException(

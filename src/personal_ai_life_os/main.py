@@ -5,6 +5,7 @@ import threading
 from collections import defaultdict, deque
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from hmac import compare_digest
 from time import monotonic, perf_counter
 
 from fastapi import FastAPI, HTTPException, Request
@@ -56,14 +57,37 @@ def create_app(
     config: Settings | None = None,
     *,
     object_store: ObjectStore | None = None,
+    desktop_secret: str | None = None,
+    desktop_path_key: bytes | None = None,
 ) -> FastAPI:
     runtime_config = config or settings
+    desktop = runtime_config.app_env == "desktop"
+    if desktop and not desktop_secret:
+        raise ValueError("Desktop mode requires a per-launch secret.")
+    desktop_chats = None
+    desktop_folders = None
+    desktop_provider = None
+    desktop_backup = None
+    if desktop_path_key is not None:
+        if not desktop:
+            raise ValueError("Native path grants require desktop mode.")
+        from personal_ai_life_os.api.routes.desktop_chats import ChatSessions
+        from personal_ai_life_os.services.desktop_backup import DesktopBackup
+        from personal_ai_life_os.services.desktop_folders import DesktopFolderSync
+        from personal_ai_life_os.services.desktop_provider import DesktopProviderStore
+
+        desktop_chats = ChatSessions(desktop_path_key)
+        desktop_folders = DesktopFolderSync()
+        desktop_provider = DesktopProviderStore(runtime_config)
+        desktop_backup = DesktopBackup(runtime_config.data_dir)
     engine = create_database_engine(runtime_config)
     session_factory = create_session_factory(engine)
     store = object_store or create_object_store(runtime_config)
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+        if desktop_provider is not None:
+            desktop_provider.load()
         if runtime_config.auto_create_schema:
             Base.metadata.create_all(bind=engine)
         with session_factory() as session:
@@ -75,6 +99,21 @@ def create_app(
         scheduler_stop = threading.Event()
         worker_thread = None
         scheduler_thread = None
+        folder_thread = None
+        backup_thread = None
+        if desktop_backup is not None:
+            backup_thread = threading.Thread(
+                target=desktop_backup.run, args=(stop_worker,), name="lifeos-desktop-backup", daemon=True,
+            )
+            backup_thread.start()
+        if desktop_folders is not None:
+            folder_thread = threading.Thread(
+                target=desktop_folders.run,
+                args=(session_factory, store, runtime_config, stop_worker),
+                name="lifeos-folder-watcher",
+                daemon=True,
+            )
+            folder_thread.start()
         if runtime_config.processing_mode == "worker":
             worker_thread = threading.Thread(
                 target=worker_loop,
@@ -95,6 +134,12 @@ def create_app(
         finally:
             scheduler_stop.set()
             stop_worker.set()
+            if desktop_chats is not None:
+                desktop_chats.close()
+            if folder_thread is not None:
+                folder_thread.join(timeout=4)
+            if backup_thread is not None:
+                backup_thread.join(timeout=4)
             if scheduler_thread is not None:
                 scheduler_thread.join(timeout=runtime_config.worker_lease_seconds + 5)
             if worker_thread is not None:
@@ -105,8 +150,9 @@ def create_app(
         title="Personal AI Life OS",
         description="A user-controlled system for capturing and reviewing personal context.",
         version="0.1.0",
-        docs_url=None if runtime_config.app_env == "production" else "/docs",
-        redoc_url=None if runtime_config.app_env == "production" else "/redoc",
+        docs_url=None if desktop or runtime_config.app_env == "production" else "/docs",
+        redoc_url=None if desktop or runtime_config.app_env == "production" else "/redoc",
+        openapi_url=None if desktop else "/openapi.json",
         lifespan=lifespan,
     )
     application.state.settings = runtime_config
@@ -119,6 +165,13 @@ def create_app(
     @application.middleware("http")
     async def observe_and_limit(request: Request, call_next):
         route = request.url.path
+        if desktop:
+            supplied = request.headers.get("x-lifeos-desktop", "").encode("utf-8")
+            if not compare_digest(supplied, (desktop_secret or "").encode("utf-8")):
+                return JSONResponse(status_code=401, content={"error": {
+                    "code": "desktop_auth_required",
+                    "message": "Open the Life OS desktop application to access this resource.",
+                }})
         key = None
         limit = 0
         window = 0
@@ -168,9 +221,9 @@ def create_app(
     application.add_middleware(
         CORSMiddleware,
         allow_origins=runtime_config.cors_origin_list,
-        allow_credentials=True,
+        allow_credentials=not desktop,
         allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
-        allow_headers=["Authorization", "Content-Type"],
+        allow_headers=["Authorization", "Content-Type"] + (["X-LifeOS-Desktop"] if desktop else []),
     )
     application.include_router(health_router, prefix="/api/v1")
     application.include_router(auth_router, prefix="/api/v1")
@@ -198,6 +251,22 @@ def create_app(
     application.include_router(reminders_router, prefix="/api/v1")
     application.include_router(search_router, prefix="/api/v1")
     application.include_router(saved_searches_router, prefix="/api/v1")
+    if desktop_chats is not None:
+        from personal_ai_life_os.api.routes.desktop_analysis import (
+            router as desktop_analysis_router,
+        )
+        from personal_ai_life_os.api.routes.desktop_chats import router as desktop_chats_router
+        from personal_ai_life_os.api.routes.desktop_data import router as desktop_data_router
+        from personal_ai_life_os.api.routes.desktop_folders import router as desktop_folders_router
+
+        application.state.desktop_chats = desktop_chats
+        application.state.desktop_folders = desktop_folders
+        application.state.desktop_provider = desktop_provider
+        application.state.desktop_backup = desktop_backup
+        application.include_router(desktop_chats_router, prefix="/api/v1")
+        application.include_router(desktop_folders_router, prefix="/api/v1")
+        application.include_router(desktop_analysis_router, prefix="/api/v1")
+        application.include_router(desktop_data_router, prefix="/api/v1")
 
     @application.exception_handler(HTTPException)
     async def http_error_handler(_: Request, error: HTTPException) -> JSONResponse:

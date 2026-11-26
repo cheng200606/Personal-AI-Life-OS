@@ -19,7 +19,7 @@ class Settings(BaseSettings):
         case_sensitive=False,
     )
 
-    app_env: Literal["development", "test", "production"] = "development"
+    app_env: Literal["development", "test", "production", "desktop"] = "development"
     api_host: str = "127.0.0.1"
     api_port: int = 8000
     database_url: str = "sqlite+pysqlite:///./data/lifeos.db"

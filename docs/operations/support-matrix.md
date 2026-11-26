@@ -2,6 +2,18 @@
 
 The current limits are enforced by the API and parsers where possible. They should be updated with any release that changes parser behavior.
 
+## Windows desktop
+
+| Workflow | Desktop behavior |
+| --- | --- |
+| Chat import | Native selection of UTF-8 JSON arrays, objects with a conversation array, or JSONL conversation objects. Each selectable conversation needs a stable ID. The app reads up to 1 GiB and limits a single conversation to 32 MiB. Only reviewed selections enter local storage. |
+| Directory synchronization | Explicitly authorize a Markdown directory, an Obsidian Vault, or a chat export directory. Chat monitoring starts after selecting a file and saving a conversation list. Files unrelated to that selection and newly appearing conversation IDs are skipped. |
+| Obsidian | Read-only import ignores system directories, links, and Life OS exports. Explicit export writes under `LifeOS-Exports` with keep, copy, and overwrite actions. |
+| Local data | The app uses the current Windows user and runs after the main window closes. Daily backup keeps 7 copies after a directory is selected. Restores apply the latest local deletion journal and require re-enabling source and provider permissions. |
+| Model and OCR | Configure an OpenAI-compatible provider in the app. Windows Credential Manager stores its secret. The installer includes Tesseract with English and Simplified Chinese models. |
+
+The following table records the existing web and CLI limits. The [desktop acceptance checklist](desktop-acceptance.md) tracks the candidate environments and test evidence.
+
 | Input / workflow | Supported | Limit and behavior | Not supported in this MVP |
 | --- | --- | --- | --- |
 | Agent memory / notes | UTF-8 `.md` and `.markdown` files through CLI or web | 5 MB per file. Markdown headings become separate timeline entries; a `YYYY-MM-DD` in a heading sets the date. Source file and line range are retained. Missing dates stay unknown. | PDF, DOCX, HTML, arbitrary directories outside explicitly selected files, non-UTF-8 input |

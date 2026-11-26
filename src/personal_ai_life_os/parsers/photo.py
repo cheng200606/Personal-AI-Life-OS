@@ -123,7 +123,7 @@ def process_photo(
 
 def extract_photo_text(image: Image.Image) -> tuple[str, str]:
     """Extract OCR from an already sanitized image without changing the stored image bytes."""
-    if not shutil.which("tesseract"):
+    if not shutil.which(pytesseract.pytesseract.tesseract_cmd):
         return "", "unavailable"
     try:
         text = pytesseract.image_to_string(image, lang="chi_sim+eng", timeout=20).strip()

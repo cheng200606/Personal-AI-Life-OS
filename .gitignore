@@ -18,3 +18,5 @@ Thumbs.db
 .idea/
 data/
 *.sqlite3
+desktop/src-tauri/target/
+desktop/src-tauri/gen/

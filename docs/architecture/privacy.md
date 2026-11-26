@@ -1,5 +1,7 @@
 # Privacy and Data Handling
 
+The [desktop MVP](../roadmap/desktop-mvp.md) uses the Windows user account as the local data boundary. Its sidecar listens on a random loopback port and requires a fresh launcher secret before serving API requests. Large chat previews parse the selected file on the device. The import persists only selected conversations.
+
 The project supports cloud deployment, but cloud hosting is not enabled by this repository. A deployment operator controls the API, database, object store, logs, TLS, and backups. Users must select the files and conversations they want to import.
 
 ## Implemented controls
