@@ -5,9 +5,7 @@ scope:
     - fixtures/
 source_files: []
 depends_on: []
-related_to:
-    - path: scripts_and_evaluate
-      reason: scripts_and_evaluate/eval 基准使用 fixtures/ 的合成对话与预期结果驱动 agent/system 评估演练。
+related_to: []
 kk_module_id: 369ebe52-0ade-4b9a-96cf-79609b5e3149
 kk_ordinal: 9
 kk_cards:

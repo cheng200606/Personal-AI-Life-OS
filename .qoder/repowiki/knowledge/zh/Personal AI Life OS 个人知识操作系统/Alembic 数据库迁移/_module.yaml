@@ -6,8 +6,10 @@ scope:
 source_files: []
 depends_on: []
 related_to:
+    - path: backend_services
+      reason: Alembic migrations 定义 graph/entities、graph/relationships、model_providers、sources 等表，与 backend_services 共享同一 ORM schema。
     - path: scripts_and_evaluate
-      reason: scripts_and_evaluate/pg_dump/s3 备份脚本直接操作 database_migrations 所管理的 Postgres/SQLite 数据库实例。
+      reason: scripts/db-backup.sh 与 scripts/pg_dump 运维脚本依赖 database_migrations 的 Alembic 迁移以维护生产数据一致性。
 kk_module_id: 3059ecb3-3f10-4d3d-bde3-0d5b51966a21
 kk_ordinal: 6
 kk_cards:

@@ -10,7 +10,9 @@ source_files: []
 depends_on: []
 related_to:
     - path: backend_services/desktop_services
-      reason: /desktop/* 路由通过 desktop_provider、desktop_folders、desktop_analysis 服务实现本地模型凭据、Markdown/Obsidian 文件夹扫描导入与分析草稿生成。
+      reason: desktop_analysis API 路由通过 desktop_services 提供的桌面文件夹扫描与 Markdown/Obsidian 分析服务完成草稿生成。
+    - path: web_app
+      reason: web 前端通过 desktopRuntime 调用 /desktop/analysis/*、/desktop/data/*、/desktop/chats/* 与桌面集成 API，由 Tauri/Rust sidecar 路由到后端。
 kk_module_id: e344cb9b-3e5b-4431-9acc-c7224854ae56
 kk_ordinal: 3
 kk_cards:

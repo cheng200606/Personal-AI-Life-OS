@@ -9,7 +9,7 @@ source_files: []
 depends_on: []
 related_to:
     - path: backend_api/agent_system
-      reason: Agent/插件/模型提供商路由调用 model_providers、model_consent、model_usage 来解析供应商凭据与管理按 owner/provider 维度的使用授权。
+      reason: model_providers/api/model_providers.py 直接消费 services.model_providers.list_model_providers 以列出外部模型供应商。
 kk_module_id: dc4df12f-63b6-4850-b3cd-1b294225c5ac
 kk_ordinal: 1
 kk_cards:

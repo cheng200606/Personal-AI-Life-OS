@@ -53,6 +53,8 @@ Evals/benchmarks (synthetic data only): `uv run python scripts/evaluate_reviews.
 
 ## Gotchas
 
+- The committed `uv.lock` records pypi.org origins, but this machine's global uv config defaults to the Aliyun mirror: a bare `uv run` can rewrite `uv.lock` (URLs + revision) and dirty the tree. Prefer `.venv/Scripts/python.exe -m pytest|ruff` or `uv run --frozen`; check lock consistency the way the release record does: `UV_DEFAULT_INDEX=https://pypi.org/simple UV_INDEX_URL=https://pypi.org/simple uv lock --check`.
+- `cargo` is not on the Git Bash PATH; use `/c/Users/Lenovo/.cargo/bin/cargo.exe` (e.g. `cargo metadata --locked --no-deps`).
 - Tests that depend on "today" must pin the clock — real-clock date drift broke `tests/test_graph_qa.py` before (commit cb3c8a8).
 - Desktop API disables registration/email login and locks CORS to the desktop origin; the sidecar binds a random loopback port with a per-launch secret piped from Tauri; sidecar builds are PyInstaller **onedir** (the whole `_internal` tree must ship together).
 - Upload limits: text 5 MB/file, photos 20 MB / 40 MP, review period ≤ 500 source items.

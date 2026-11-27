@@ -11,7 +11,9 @@ source_files: []
 depends_on: []
 related_to:
     - path: backend_api/identity_and_planning
-      reason: 身份与规划路由调用 ontology、plugins、insights、deleter 服务处理本体提议审批、本地插件目录权限管理与基于图证据的可解释洞察。
+      reason: reviews.py 路由调用 review_insights.build_review_insights（属 knowledge_ops）以在审阅时生成基于图证据的趋势/承诺洞察。
+    - path: backend_api/evidence_graph
+      reason: graph API 路由挂载 ontology.py、plugins.py、insights.py，直接调用 knowledge_ops 提供的本体提议审批与可解释洞察服务。
 kk_module_id: 240dcfcc-7a7f-40f9-a66e-910f3cb4dd11
 kk_ordinal: 4
 kk_cards:

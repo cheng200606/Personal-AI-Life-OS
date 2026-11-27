@@ -6,9 +6,7 @@ scope:
     - .github/workflows/
 source_files: []
 depends_on: []
-related_to:
-    - path: web_app
-      reason: devcontainer_and_ci/.github/workflows/ 定义 Python web/desktop 多阶段构建、pytest 测试执行、Tauri 前端构建等流水线步骤。
+related_to: []
 kk_module_id: ddc0ad89-2a32-412a-a89c-469533834685
 kk_ordinal: 11
 kk_cards:

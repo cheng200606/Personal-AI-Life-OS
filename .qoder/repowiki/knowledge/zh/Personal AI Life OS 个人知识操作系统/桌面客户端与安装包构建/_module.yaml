@@ -11,8 +11,8 @@ scope:
 source_files: []
 depends_on: []
 related_to:
-    - path: backend_api
-      reason: Tauri Rust shell 与 PyInstaller sidecar 通过 Tauri invoke 桥与 FastAPI /desktop/* 端点交互以获取系统级备份还原、本地文件分析与 Markdown 导出能力。
+    - path: backend_api/desktop_integrations
+      reason: Tauri Rust 外壳在前端调用 desktopRequest('/desktop/folders' 等) 时被代理到后端 /desktop/* FastAPI 路由，形成桌面壳↔后端集成 API 的双向通道。
 kk_module_id: 57dc2ef1-b96b-4c4e-92c7-eca8dbe38495
 kk_ordinal: 5
 kk_cards:

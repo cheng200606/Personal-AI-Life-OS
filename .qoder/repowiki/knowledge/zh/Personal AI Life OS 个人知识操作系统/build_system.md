@@ -37,7 +37,7 @@
 - `smoke-installer.ps1` 用于安装器冒烟测试。
 
 ### Compose 编排
-- `docker-compose.production.yml` 定义三层：Caddy 反代（暴露 80/443，需 `LIFEOS_DOMAIN`）→ Nginx Web（依赖 api 健康）→ FastAPI（依赖 pgvector/pg16，启动前执行 `alembic upgrade head`）→ PostgreSQL（pgvector 扩展）。
+- `docker-compose.production.yml` 定义四层：Caddy 反代（暴露 80/443，需 `LIFEOS_DOMAIN`）→ Nginx Web（依赖 api 健康）→ FastAPI（依赖 pgvector/pg16，启动前执行 `alembic upgrade head`）→ PostgreSQL（pgvector 扩展）。
 - API healthcheck 调用 `/api/v1/ready`，DB healthcheck 用 `pg_isready`。
 - 部署变量强制校验（`${VAR:?Set ...}`），包含 S3 对象存储、模型供应商、Secrets 等。
 

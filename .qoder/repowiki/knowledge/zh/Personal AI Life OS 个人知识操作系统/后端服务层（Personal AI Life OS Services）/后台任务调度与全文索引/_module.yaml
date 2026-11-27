@@ -7,7 +7,12 @@ scope:
     - src/personal_ai_life_os/services/search_index.py
 source_files: []
 depends_on: []
-related_to: []
+related_to:
+    - path: backend_api/agent_system
+      reason: background job 路由（jobs.py）与 services.scheduling.py 的 compute_next_run/retry 调度器配合，构成作业计划↔执行的 REST 接口关系。
+similar_to:
+    - path: backend_services/desktop_services
+      reason: desktop_analysis 与 search_index 都是后台处理模块，前者扫描桌面 Markdown/Obsidian 文件夹生成草稿，后者对 SQLite/PG 建立全文检索索引——结构相似但业务不同。
 kk_module_id: 6c66e4f0-e150-491f-8d90-982d018cf1fd
 kk_ordinal: 2
 kk_cards:

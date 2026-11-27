@@ -2,7 +2,7 @@
 
 - **pydantic-settings** `BaseSettings`：作为唯一的运行时配置加载器，负责类型解析、默认值、环境变量注入与验证。
 - **Python `.env` 文件**：可选的本地开发时覆盖层。
-- **Docker / Compose 环境变量**：生产部署中通过 `docker-compose.production.yml` 以 `LIFEOS_DOMAIN`、`DATABASE_URL`、`ACCESS_TOKEN_SECRET` 等 `${VAR:-default}` / `${VAR:?error}` 形式注入配置。
+- **Docker / Compose 环境变量**：生产部署中通过 `docker-compose.production.yml` 以 `${VAR:-default}` / `${VAR:?error}` 形式注入配置。
 - 依赖在 `pyproject.toml` 中以 `"pydantic-settings>=2.6,<3.0"` 声明。
 
 ## 2. 核心文件
@@ -29,28 +29,29 @@
 
 `validate_production_configuration` 在实例化后集中执行以下规则（来源于代码中的 `raise ValueError` 条件）：
 
+- `S3_DELETION_JOURNAL_BUCKET` 不能与 `S3_BUCKET` 相同。
 - `ACCESS_TOKEN_SECRET` 不能是默认值且长度 ≥ 32。
-- `AUTO_CREATE_SCHEMA` 必须为 `false`（强制走 Alembic）。
+- `AUTO_CREATE_SCHEMA` 必须为 false（强制走 Alembic）。
 - `PROCESSING_MODE` 必须为 `"worker"`。
 - `REGISTRATION_MODE != "open"`；若为 `"invitation"` 则 `SIGNUP_INVITE_CODE` 必填。
 - `CORS_ORIGINS` 不得包含任何带 `localhost`/`127.0.0.1` 的 origin，且必须提供。
 - `METRICS_TOKEN` 必须存在且长度 ≥ 32。
 - `OBJECT_STORE_BACKEND == "s3"` 且 `S3_BUCKET` 必须提供。
-- `S3_DELETION_JOURNAL_BUCKET` 必须提供且不能与 `S3_BUCKET` 相同。
+- `S3_DELETION_JOURNAL_BUCKET` 必须提供。
 - 若启用 `MODEL_PROVIDER=openai`：必须提供 `OPENAI_API_KEY`、`MODEL_PRIVACY_URL`、长度 ≥ 20 的 `MODEL_DISCLOSURE_RETENTION`；输入/输出单价和单次调用预算必须为正数。
 
 这些校验发生在实例化的 `__init__` → `model_validator` 阶段，即服务进程启动时失败，而非首次读取该字段时。
 
 ### 派生字段
 
-- `cors_origin_list`：按逗号拆分、trim 后的 Python list，供 CORS 中间件直接使用。
-- `openai_chat_completions_url`：基于 `openai_base_url` 追加 `/chat/completions` 并去除尾部斜杠；测试覆盖了默认值与带空格的 gateway URL。
+- `cors_origin_list`：按逗号拆分、strip 后的 Python list，供 CORS 中间件直接使用。
+- `openai_chat_completions_url`：基于 `openai_base_url.strip().rstrip("/") or "https://api.openai.com/v1"` 追加 `/chat/completions`；测试覆盖了默认值与带空格的 gateway URL。
 
 ## 4. 约定与约束
 
 - **配置入口唯一**：所有配置统一经 `personal_ai_life_os.config.Settings`，没有散落的环境变量 `os.getenv` 调用。
 - **`.env` 仅用于开发**：`env_file=".env"` 是默认生效路径，但测试用例显式传 `_env_file=None` 以避免污染；生产通过容器环境变量注入。
-- **关键字段采用 `Literal[...]` 联合类型**，使不可接受的运行模式在类型解析阶段就报错（如 `app_env` 只允许 `development|test|production|desktop`，`processing_mode` 只允许 `inline|worker`）。
+- **关键字段采用 `Literal[...]` 联合类型**，使不可接受的运行模式在类型解析阶段就报错（如 `app_env` 只允许 `development|test|production|desktop`，`processing_mode` 只允许 `inline|worker`，`object_store_backend` 只允许 `local|s3`，`registration_mode` 只允许 `open|invitation|closed`）。
 - **生产密钥强制外部注入**：`docker-compose.production.yml` 对 `ACCESS_TOKEN_SECRET`、`SIGNUP_INVITE_CODE`、`METRICS_TOKEN`、`S3_BUCKET`、`S3_DELETION_JOURNAL_BUCKET`、`DATABASE_URL`、`LIFEOS_DOMAIN` 使用 `${VAR:?Set VAR}` 语法，若未在宿主机设置则容器启动即失败。
 - **字段取值范围受 `pydantic.Field` 与 `model_validator` 双重约束**：例如 `registration_rate_limit` 的 `ge=1, le=1000` 在 BaseSettings 层级校验，而业务语义规则（不允许 open self-registration）在后端层校验。
 - **`MODEL_PROVIDERS` 为 JSON 字符串**：代码在 validator 中尝试 `json.loads(self.model_providers)`，若非 dict 会抛错，使用者必须以合法 JSON 字符串提供。

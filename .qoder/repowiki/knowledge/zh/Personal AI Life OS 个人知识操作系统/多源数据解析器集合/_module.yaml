@@ -5,9 +5,7 @@ scope:
     - src/personal_ai_life_os/parsers/
 source_files: []
 depends_on: []
-related_to:
-    - path: tests
-      reason: tests/ 覆盖 backend_parsers（ICS、聊天导出、图片、Markdown 记忆）的各解析器输出，作为独立测试单元运行。
+related_to: []
 kk_module_id: 3324e44d-1b2c-4489-9b3a-ea8c96687769
 kk_ordinal: 2
 kk_cards:

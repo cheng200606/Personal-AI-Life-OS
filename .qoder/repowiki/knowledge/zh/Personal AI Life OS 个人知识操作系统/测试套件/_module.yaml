@@ -5,9 +5,7 @@ scope:
     - tests/
 source_files: []
 depends_on: []
-related_to:
-    - path: backend_api
-      reason: tests/ 通过 pytest fixture 调用 backend_api/routes、backend_services、parser、desktop 子模块以验证 FastAPI 应用及桌面集成功能。
+related_to: []
 kk_module_id: b74e2e65-e0fd-4d4c-9ce3-8d311f77dc31
 kk_ordinal: 8
 kk_cards:

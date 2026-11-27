@@ -10,12 +10,8 @@ scope:
 source_files: []
 depends_on: []
 related_to:
-    - path: backend_parsers
-      reason: graph_pipeline 的 graph_extraction 与 evidence_graph 服务使用 parsers/ 目录下的解析器将日历、聊天、文档等外部格式解析为 ParsedItem。
-    - path: fixtures
-      reason: fixtures/ 提供的虚构对话、Markdown 证据与评测用例被 backend_services/graph_pipeline 的审阅评估与导入流程消费。
-    - path: backend_api/evidence_graph
-      reason: 图谱查询/合并/审查 REST 路由直接调用 graph_extraction、graph_evidence、graph_review 等服务函数构建和审阅实体关系图。
+    - path: backend_api/agent_system
+      reason: agent/system 路由（reviews、qa、insights、budget）调用 graph_extraction.monthly_spend / build_review_insights，是图谱构建管线的 HTTP 入口。
 kk_module_id: 02d1827b-4477-40f6-ae15-00de879b304a
 kk_cards:
     architecture_design:

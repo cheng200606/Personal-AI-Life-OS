@@ -11,7 +11,7 @@ Personal AI Life OS 是一个跨三种语言的后端+前端+桌面应用，每�
 ## Python 端：uv 与 pyproject.toml
 
 ### 关键文件
-- `pyproject.toml`：声明构建系统、运行时依赖与依赖组。
+- `pyproject.toml`：声明构建系统（setuptools，`setuptools.build_meta`）、运行时依赖与依赖组。
 - `uv.lock`：由 uv 生成的完整 lockfile，包含所有直接/传递依赖的精确版本、来源（PyPI URL）、sha256 hash、sdist/wheel 元数据与 `requires-python` 标记解析。
 
 ### 依赖分组约定

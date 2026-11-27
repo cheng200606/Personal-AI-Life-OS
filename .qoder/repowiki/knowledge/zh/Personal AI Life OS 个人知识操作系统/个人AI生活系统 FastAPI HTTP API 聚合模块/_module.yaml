@@ -5,9 +5,7 @@ scope:
     - src/personal_ai_life_os/api/
 source_files: []
 depends_on: []
-related_to:
-    - path: web_app
-      reason: React 前端通过 Vite dev proxy / HTTP fetch 调用 backend_api 聚合的 FastAPI REST 端点（auth、agent、graph、search、sources 等）作为后端 UI。
+related_to: []
 kk_module_id: e7f14802-07bd-45d7-97ac-13e429cee125
 kk_cards:
     architecture_design:

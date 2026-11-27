@@ -6,7 +6,7 @@
 
 - `src/personal_ai_life_os/main.py` — FastAPI 应用根 logger，模块级 `logger = logging.getLogger("personal_ai_life_os")`；在 lifespan / middleware 中记录启动、中间件异常和未处理的请求错误。
 - `src/personal_ai_life_os/desktop.py` — Tauri sidecar 进程的唯一日志入口：调用 `logging.basicConfig(..., handlers=[RotatingFileHandler(log_dir / "sidecar.log", maxBytes=1_000_000, backupCount=3)], level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s", force=True)`，将 sidecar 输出按 1 MB 轮转、最多保留 3 份到 `<data>/logs/sidecar.log`；使用模块级 `logger = logging.getLogger(__name__)` 记录迁移失败和侧车启动错误。
-- 其余服务层与路由层（services/*、api/routes/*）直接 import `logging` 并采用 `logger = logging.getLogger(__name__)`。
+- 其余服务层与路由层（services/*、api/routes/*）直接 import `logging` 并采用 `logger = logging.getLogger(__name__)`。覆盖的 14 个文件包括 services/ingestion.py、jobs.py、scheduling.py、deletion.py、graph_extraction.py、desktop_backup.py、desktop_provider.py、desktop_folders.py、search_index.py、agent_actions.py、model_providers.py、reviews.py 以及 api/routes/items.py、desktop_chats.py 等模块。
 
 ## 3. 架构与约定
 

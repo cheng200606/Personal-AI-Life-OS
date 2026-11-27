@@ -9,7 +9,7 @@ source_files: []
 depends_on: []
 related_to:
     - path: backend_services/scheduling
-      reason: 搜索与已保存查询路由读写 search_index.py 提供的 SQLite/PostgreSQL 全文索引，并由 jobs.py 提供后台任务执行能力。
+      reason: search.py 路由在搜索时调用 search_index.fts_candidate_filter / search_backend，将检索请求落到 scheduling 模块的全文索引服务。
 kk_module_id: 537378cb-5afd-49ba-850c-941ff9175a0a
 kk_ordinal: 2
 kk_cards:
