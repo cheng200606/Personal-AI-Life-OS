@@ -13,6 +13,7 @@ from personal_ai_life_os.models import (
     Review,
     SourceConnection,
 )
+from personal_ai_life_os.services import graph_qa
 
 
 def _headers(token: str) -> dict[str, str]:
@@ -198,7 +199,8 @@ def _thread(client, token: str, scope: dict | None = None) -> str:
     return response.json()["id"]
 
 
-def test_four_question_types_return_facts_and_citations(client) -> None:
+def test_four_question_types_return_facts_and_citations(client, monkeypatch) -> None:
+    monkeypatch.setattr(graph_qa, "utcnow", lambda: datetime(2026, 11, 22, tzinfo=UTC))
     token = token_for(client, "qa-four@example.com")
     seeded = _seed_graph(client, token)
     thread_id = _thread(client, token)
