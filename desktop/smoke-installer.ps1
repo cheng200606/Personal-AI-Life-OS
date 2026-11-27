@@ -1,8 +1,12 @@
 param(
-    [string]$Installer = (Join-Path $PSScriptRoot 'src-tauri/target/release/bundle/nsis/Personal AI Life OS_0.1.0_x64-setup.exe')
+    [string]$Installer
 )
 
 $ErrorActionPreference = 'Stop'
+if (-not $Installer) {
+    $config = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'src-tauri/tauri.conf.json') -Raw | ConvertFrom-Json
+    $Installer = Join-Path $PSScriptRoot ("src-tauri/target/release/bundle/nsis/{0}_{1}_x64-setup.exe" -f $config.productName, $config.version)
+}
 $installerPath = (Resolve-Path -LiteralPath $Installer).Path
 $uninstallKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*'
 $alreadyInstalled = @(Get-ItemProperty $uninstallKey -ErrorAction SilentlyContinue |

@@ -1,6 +1,6 @@
 {
   "productName": "Personal AI Life OS",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "identifier": "org.personalailifeos.desktop",
   "build": {
     "beforeBuildCommand": { "script": "npm.cmd --prefix web run build", "cwd": "../.." },

@@ -1,4 +1,64 @@
-# M4 进度审查与下一阶段迭代
+# 当前迭代：R1 v0.1.1 本机发布候选定稿与文档真相校准
+
+> 2026-11-27 更新。上一轮 M4 审查保留在文末「历史基线」。里程碑见 [milestones.md](milestones.md)，桌面交付见 [桌面 MVP 方案](desktop-mvp.md)，验收证据见 [桌面本地验收](../operations/desktop-acceptance.md)。
+
+## 1. 背景与当前进度
+
+- D0–D5 桌面 MVP 已完成，并于 2026-11-27 通过 Windows 10/11 本机候选验收；M7–M10 已完成；没有 D5 之后的既定里程碑。
+- 代码基线为 `cb3c8a8`（2026-11-27）。调研基线实测：Ruff 通过、131 项 Python 测试通过、Web lint 与生产构建通过、18 项 Edge Playwright 通过。
+- 本次更新前的缺口不是新功能，而是发布状态不一致：
+  - 仓库产品版本仍为 0.1.0，实际验收候选为 0.1.1（D5 构建时用 Tauri 配置覆盖版本）。
+  - `desktop/smoke-installer.ps1` 硬编码 0.1.0 安装包名，版本升级后会失效。
+  - 0.1.1 安装包只存在于被忽略的 `desktop/src-tauri/target/`，未归档；清理 target 会丢失唯一最新验收物。
+  - 无发布记录、CHANGELOG 或 git tag。
+  - README、架构概览、里程碑与差距文档仍把桌面写成 planned/未实现。
+
+## 2. 目标与非目标
+
+**目标：** 把已验收的 0.1.1 变成有单一版本来源、有哈希与归档、有发布记录、文档与实际一致的发布候选；让后续升级与回滚测试拿到正确版本的包。
+
+**非目标（本轮明确不做）：**
+
+- 公开分发、代码签名、SmartScreen 信誉、签名自动更新。
+- 新连接器、语义/向量检索、桌面韧性增强、托管多用户（M11）。
+- 处理真实个人资料、调用外部模型、提交/打 tag/推送。
+- 把 `web/package.json` 的 `0.0.0` 纳入产品版本契约（当前没有代码依赖它作为产品版本）。
+
+## 3. 任务、依赖与验收
+
+| 任务 | 内容 | 依赖 | 验收 |
+| --- | --- | --- | --- |
+| T1 版本单一来源 | 以 `desktop/src-tauri/tauri.conf.json` 为权威，同步 `Cargo.toml`、`pyproject.toml`、`Cargo.lock`、`uv.lock` 与包 `__version__` 为 0.1.1；`smoke-installer.ps1` 从配置读取版本；新增 `tests/test_desktop_release.py` | 无 | 版本一致性测试通过；`uv lock --check`（PyPI 覆盖）与 `cargo metadata --locked` 通过；锁文件只含项目版本行变更 |
+| T2 产物保护与重建 | 构建前把既有 0.1.1 复制到 `desktop/dist/verified-0.1.1/pre-version-alignment/` 并记录哈希；用统一后的版本重建，新产物归档到 `.../version-aligned/`；执行安装/卸载与 sidecar `--full` 冒烟；新增发布记录 | T1 | 两份 0.1.1 均保留；冒烟通过；发布记录的哈希/大小与实际一致 |
+| T3 文档真相校准 | README、架构概览、里程碑、差距文档、验证记录、桌面方案、验收记录、发布清单与路线图入口对齐 D0–D5 事实；保留历史记录并给不可复核百分比加日期化说明 | 可与 T1/T2 并行 | 不再出现「桌面仅 planned/outside MVP」的现状陈述；链接可达；测试数字以 T4 实测为准 |
+| T4 统一回归 | Ruff、全量 pytest、Web lint/生产构建、Edge + PyPI 覆盖的 Playwright、安装包构建与冒烟、产物 SHA-256 | T1、T2、T3 | 全部通过并记录实际命令、环境与结果；已知环境限制如实标注 |
+
+## 4. 当前状态（2026-11-27）
+
+| 任务 | 状态 | 证据 |
+| --- | --- | --- |
+| T1 | 完成 | 产品版本统一为 0.1.1；`tests/test_desktop_release.py` 4 项通过（含 Web OpenAPI 版本回归）；`uv lock --check`（PyPI 覆盖）与 `cargo metadata --locked` 通过；锁文件仅项目版本行变化；`smoke-installer.ps1` 改为从 `tauri.conf.json` 读取版本 |
+| T2 | 完成 | 既有验收物归档为 `desktop/dist/verified-0.1.1/pre-version-alignment/`（94,296,265 字节，`E6B80C83…38D29`）；重建产物归档为 `.../version-aligned/`（F1 修复后 94,285,130 字节，`149FBC9F…F748C`）；安装/卸载与 sidecar `--full` 冒烟通过；详见 [0.1.1 发布记录](../operations/releases/0.1.1.md) |
+| T3 | 完成 | README、架构概览、里程碑、差距文档、验证记录、桌面方案、验收记录、发布清单与路线图入口已校准；相对链接检查通过；历史记录与百分比口径标注日期 |
+| T4 | 完成 | Ruff 通过；135 项 Python 测试通过（含 F1 回归）；Web lint 0 警告/0 错误与生产构建通过；Edge + PyPI 覆盖的 18 项 Playwright 通过（F1 后独立复跑 27.3 秒；先前 47.2 秒）；安装包构建与冒烟通过；新产物 SHA-256 已记录 |
+| F1 定向修复 | 完成 | `src/personal_ai_life_os/main.py` 的 FastAPI 版本改为引用包 `__version__`；Web `app.openapi()["info"]["version"]` 为 0.1.1；新增回归测试；修复前 version-aligned 产物归档为 `pre-api-version-fix/`；修复后重建与冒烟 |
+
+## 5. 范围与安全边界
+
+- 只做本机单人发布候选定稿；真实个人资料仍未获准进入，托管与他人使用仍未就绪。
+- 不读取或输出 `.env` 与任何秘密；不触碰 `data/`、用户资料、`desktop/build/hyperv/`、`desktop/dist/verified-0.1.0/`。
+- 所有变更留在工作树，不提交、不打 tag、不推送。
+
+## 6. 后续决策（R1 之后）
+
+1. 是否将 0.1.1 作为正式发布并打 tag、推送（需网络与用户授权）。
+2. 是否公开分发（需签名证书、SmartScreen 信誉与更新托管预算）。
+3. 本机单人是否允许使用真实个人资料；确认后统一 README 与发布清单口径。
+4. R1 后先自用测量摩擦（导入次数、复盘完成率、找回时间、失败率），还是继续扩展功能；按停止规则默认先测量。
+
+---
+
+# 历史基线：M4 进度审查与下一阶段迭代（2026-11-25）
 
 > 历史基线。M7–M10 已完成，当前开发与验收见 [桌面 MVP 方案](desktop-mvp.md)。
 

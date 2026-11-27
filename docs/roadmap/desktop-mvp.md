@@ -31,6 +31,6 @@
 7. 删除源文件，处理待确认记录，再恢复先前备份。确认已删除数据保持删除。
 8. 在没有云端授权、断网和预算耗尽的情况下验证本地导入和检索，并检查任务状态及重试。
 
-方案来源是用户确认的桌面 MVP 迭代方案。 [项目进度与规划审查](chatgpt-conversation://6b084028-8448-83ec-bfe8-157de342101c)
+方案来源是用户确认的桌面 MVP 迭代方案。历史规划审查见 [R1 迭代计划与 M4 历史基线](next-iteration.md)。
 
-候选证据和未验收事项记录在 [桌面本地验收](../operations/desktop-acceptance.md)。
+候选证据和未验收事项记录在 [桌面本地验收](../operations/desktop-acceptance.md)；0.1.1 产物归档与完整哈希见 [发布记录](../operations/releases/0.1.1.md)。

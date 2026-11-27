@@ -13,6 +13,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from personal_ai_life_os import __version__
 from personal_ai_life_os.api.routes.account import router as account_router
 from personal_ai_life_os.api.routes.agent import router as agent_router
 from personal_ai_life_os.api.routes.auth import router as auth_router
@@ -149,7 +150,7 @@ def create_app(
     application = FastAPI(
         title="Personal AI Life OS",
         description="A user-controlled system for capturing and reviewing personal context.",
-        version="0.1.0",
+        version=__version__,
         docs_url=None if desktop or runtime_config.app_env == "production" else "/docs",
         redoc_url=None if desktop or runtime_config.app_env == "production" else "/redoc",
         openapi_url=None if desktop else "/openapi.json",

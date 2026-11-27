@@ -4,6 +4,11 @@ This checklist gates exposing the instance to other people. A solo local instanc
 
 This checklist separates repository evidence from hosting and user research evidence. A box is complete only when an operator records the actual environment, date, version, and result.
 
+## Scope
+
+- **Solo local candidate (current):** the Windows desktop D0–D5 build passed local acceptance on 2026-11-27 using synthetic data. It runs on one local Windows account, needs no hosted infrastructure, and is neither signed nor distributed to other people. See [desktop acceptance](desktop-acceptance.md).
+- **Hosted or other-people beta:** every unchecked item below still applies. Real personal data is not approved yet.
+
 ## Repository evidence
 
 - [x] Python lint and tests pass locally.
@@ -29,4 +34,4 @@ This checklist separates repository evidence from hosting and user research evid
 
 ## Current release decision
 
-**Not ready for real personal data.** Repository-level implementation and local synthetic evidence are present. No cloud host, production bucket, domain, production restore drill, security review, or private-beta user study was available in this workspace. The operator must complete the unchecked items and record results before opening a beta.
+**Hosted or other-people release: not ready for real personal data.** The solo local Windows desktop candidate passed D0–D5 acceptance on 2026-11-27 with synthetic data only. Repository-level implementation, local synthetic evidence, and a version-aligned 0.1.1 release candidate are present, but no cloud host, production bucket, domain, production restore drill, security review, signed installer, or private-beta user study was available in this workspace. Real personal data remains unapproved; the operator must complete the unchecked items and record results before opening a beta to other people.

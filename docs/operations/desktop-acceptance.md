@@ -47,7 +47,7 @@ Get-FileHash desktop/src-tauri/target/release/bundle/nsis/*.exe
 ## D5 干净系统验收进度（2026-11-27）
 
 - 用户已配置本机 Hyper-V。`LifeOS-D5-Win10` 和 `LifeOS-D5-Win11` 是本次专用的第 2 代 x64 虚拟机；两块动态 VHDX 均位于 `D:\ProfessionalSoftware\Project\Personal-AI-Life-OS\desktop\build\hyperv`。虚拟机已配置 Secure Boot、动态内存和 Guest Service Interface；Win11 已配置 vTPM。安装镜像与无人值守应答介质也保存在同一 D 盘目录。
-- 为覆盖实际版本升级，另行构建 0.1.1 x64 NSIS 候选版：94,296,265 字节，SHA-256 `E6B80C83DD901164D77FFB6F5918C15F1D3164C5CB727FA0E70019CC05438D29`。该构建通过 Tauri 配置覆盖版本号，仓库产品版本仍为 0.1.0；上一候选 0.1.0 安装包保留在 `desktop/dist/verified-0.1.0/`，SHA-256 `6888E94561CAD2AB5CDC9CF90B727BEF4023263D688A58E2A31B1FAB7E2A121C`。
+- 为覆盖实际版本升级，另行构建 0.1.1 x64 NSIS 候选版：94,296,265 字节，SHA-256 `E6B80C83DD901164D77FFB6F5918C15F1D3164C5CB727FA0E70019CC05438D29`。该构建通过 Tauri 配置覆盖版本号，仓库产品版本当时仍为 0.1.0（R1 已把仓库版本统一为 0.1.1，见发布记录）；上一候选 0.1.0 安装包保留在 `desktop/dist/verified-0.1.0/`，SHA-256 `6888E94561CAD2AB5CDC9CF90B727BEF4023263D688A58E2A31B1FAB7E2A121C`。
 - 修正了 `test_four_question_types_return_facts_and_citations` 对固定 2026-11-20 笔记使用真实当前时钟造成的日期漂移，为该测试固定参考时钟。完整 Python 套件 131 项通过；该测试文件 Ruff 检查通过。
 - **Windows 10：**Windows 10 Enterprise LTSC Evaluation x64，Build 19044。以当前用户安装 0.1.0，升级到 0.1.1 后再次启动，检索到升级前快速记录；静默升级退出码为 0。静默卸载退出码为 0，应用目录与两个应用进程均消失；`%LOCALAPPDATA%\PersonalAILifeOS\data\lifeos.db` 保留，SQLite integrity check 为 `ok`，数据库中仍有 `D5 Win10 pre-upgrade marker`。卸载后检查未发现 Python、Node、npm、Docker、`lifeos` 或 sidecar 命令；当时 WebView2 Runtime 为 158.0.4370.33。
 - **Windows 11 首次启动与离线：**Windows 11 Enterprise LTSC Evaluation x64，Build 26100。干净首次启动时系统没有 WebView2 Runtime；应用启动后安装 Evergreen Runtime，版本 158.0.4370.45。创建本机资料、保存快速记录并用 Ctrl+K 搜索通过。断开 VM 网卡后，仍可创建并检索离线快速记录；恢复网络后首次显示请求超时，手动点击“重试”恢复工作区与本地记录。
@@ -65,3 +65,11 @@ Get-FileHash desktop/src-tauri/target/release/bundle/nsis/*.exe
 - **Win11 与 Win10 候选 sidecar 迁移失败恢复和重试：**在两个系统的隔离数据目录运行 0.1.1 候选 sidecar 与同一份合成旧版数据库；Win11 使用安装目录 sidecar，Win10 使用与候选安装包同源且 SHA-256 相同的完整 sidecar 目录包。先用冲突表触发迁移失败，两个系统均记录了回滚日志，SQLite integrity 为 `ok`，版本恢复到 `a1b7c9d3e504`，合成业务标记和原表结构保留，且未出现 `desktop_folders`。移除隔离数据库中的冲突表后，用同一 sidecar 重试；两系统均启动成功并升级至 `c8d73b1e0afd`，合成业务标记保留、`desktop_folders` 与草稿 `owner_id` 列存在，完整性仍为 `ok`。Win10/Win11 的 0.1.0 → 0.1.1 安装升级另已通过前述记录。
 - **存储位置：**两台 Hyper-V 虚拟机的配置、检查点、基础 VHDX、活动 AVHDX、安装介质、合成数据和测试辅助文件均在 `D:\ProfessionalSoftware\Project\Personal-AI-Life-OS\desktop\build\hyperv`；本轮确认两台 VM 的磁盘与检查点路径均以 D 盘开头。
 - **D5 结论：**本机桌面 MVP 的 Windows 10/11 候选验收通过。签名、SmartScreen 信誉与自动更新继续作为公开分发门禁，不属于本机单人 MVP 的未完成项。
+
+## 发布产物归档（2026-11-27）
+
+- `desktop/dist/verified-0.1.0/`：2026-11-26 验收的 0.1.0 安装包，94,289,668 字节，SHA-256 `6888E94561CAD2AB5CDC9CF90B727BEF4023263D688A58E2A31B1FAB7E2A121C`；本轮未改动。
+- `desktop/dist/verified-0.1.1/pre-version-alignment/`：D5 验收使用的 0.1.1 安装包（构建时用 Tauri 配置覆盖版本，仓库产品版本当时仍为 0.1.0），94,296,265 字节，SHA-256 `E6B80C83DD901164D77FFB6F5918C15F1D3164C5CB727FA0E70019CC05438D29`。
+- `desktop/dist/verified-0.1.1/pre-api-version-fix/`：R1 首次版本统一后构建、Web OpenAPI 版本仍为 0.1.0 的产物（F1 修复前），94,288,339 字节，SHA-256 `87AFA3ABFB2134E70B89557FAEDFACBB58B55581A24389E9EEF868D448EFF72C`。
+- `desktop/dist/verified-0.1.1/version-aligned/`：R1 修复 F1（Web OpenAPI 版本）后重建的安装包，94,285,130 字节，SHA-256 `149FBC9F4C993268D58DC190406C88F5019B1156EE01F24772D006A6FC3F748C`；构建工具链、安装/卸载与 sidecar `--full` 冒烟结果见 [0.1.1 发布记录](releases/0.1.1.md)。
+- 上述四个目录均位于被 `.gitignore` 排除的 `desktop/dist/`。安装包不是按字节可复现构建，产物身份以 SHA-256 区分；清理或重建时先保留既有归档。

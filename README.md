@@ -4,7 +4,7 @@
 
 An Apache-2.0 open source project for importing selected chat exports, calendar snapshots, photos, and agent memory files; capturing quick notes; reviewing a source-linked timeline; preparing weekly reflections and reminders; and exporting portable Markdown for Obsidian.
 
-> **MVP status:** the local API, CLI, web workflow, review/reminder flow, photo processing, and production deployment templates are implemented. The project has not been deployed to a hosted environment or approved for real personal data. Follow the [release checklist](docs/operations/release-checklist.md) before inviting users.
+> **MVP status:** the local API, CLI, web workflow, review/reminder flow, photo processing, and production deployment templates are implemented. The single-user Windows desktop MVP (D0–D5) is implemented and passed local acceptance on 2026-11-27 using synthetic data; see the [desktop MVP plan](docs/roadmap/desktop-mvp.md) and [acceptance record](docs/operations/desktop-acceptance.md). The project has not been deployed to a hosted environment or approved for real personal data. Follow the [release checklist](docs/operations/release-checklist.md) before inviting users.
 
 ## What works
 
@@ -31,8 +31,9 @@ An Apache-2.0 open source project for importing selected chat exports, calendar 
 - Run a daily folder sync through the CLI with the Windows Task Scheduler helper; repeated runs reuse the source and SHA-256 deduplication.
 - Pause, resume, or revoke a source; download an account archive; delete a source or account.
 - Run with SQLite and local object storage for development, PostgreSQL in Compose, or a private S3-compatible store in a production deployment.
+- Install a Windows 10/11 x64 desktop build that hosts the same web UI in WebView2 and supervises a packaged Python sidecar with a random loopback port, per-launch secret, tray/autostart/single-instance behavior, native folder grants, OCR, and local backups without Docker. Build and local acceptance commands are recorded in [desktop acceptance](docs/operations/desktop-acceptance.md).
 
-The current search uses bounded candidate indexes: SQLite FTS5 trigram and PostgreSQL `pg_trgm` GIN when available, with case-insensitive SQL `LIKE` fallback. Every candidate is rechecked against owner, current-version, deletion, source-status, and filter conditions. There is no semantic/vector index. Scheduled folder sync and scheduled weekly review drafts are available. Recurring ICS expansion, CalDAV/email/IM connectors, semantic/vector search, email or server push delivery, offline capture queues, and native mobile/desktop packages remain outside this MVP.
+The current search uses bounded candidate indexes: SQLite FTS5 trigram and PostgreSQL `pg_trgm` GIN when available, with case-insensitive SQL `LIKE` fallback. Every candidate is rechecked against owner, current-version, deletion, source-status, and filter conditions. There is no semantic/vector index. Scheduled folder sync and scheduled weekly review drafts are available. Recurring ICS expansion, CalDAV/email/IM connectors, semantic/vector search, email or server push delivery, offline capture queues, and native mobile packages remain outside this MVP. The Windows desktop package is implemented through D0–D5; public distribution still requires code signing, SmartScreen reputation, and signed updates.
 
 ## Local development
 
@@ -110,7 +111,7 @@ Personal AI Life OS 是一个 Apache-2.0 开源的个人工作与学习记忆系
 
 v0.5 进一步提供中文优先的时间线、提问、图谱、待审、项目与目标、复盘、搜索和设置界面；图谱支持低置信度待审、可撤销实体合并与自定义本体；个人问答只使用有效证据并给出引用与置信度；四条规则洞察支持忽略误报；Agent 可在 24 小时内撤销内部写入，四条红线必须人工批准；本地插件清单同时覆盖参考连接器与图谱检索工具。M7 增加 ICS 日历快照与快速笔记，M8 增加 trigram 检索索引、类型/日期/来源/状态/标签/集合筛选、保存检索以及标签和集合整理。M9 增加环境变量驱动的提供方/模型注册表、按提供方独立同意、手动与计划复盘模型选择、跨周期趋势/承诺到期日/目标关联、复盘版本对比，以及按日/周/月统计的模型用量与失败预留；固定 30 例多提供方评测报告见 `docs/operations/review-model-evaluation.json`。M10 增加显式选择目录的 Obsidian Vault 直写、keep/copy/overwrite 冲突策略与下载回退，以及带分享目标和移动捕获页的 PWA；浏览器通知需明确授权，应用内到期提醒在移动布局继续可用。
 
-MVP 的本地开发主流程已实现，但尚未部署到托管环境，也未通过真实用户私测准入。不要把真实个人资料放入未验证的共享部署；上线前请完成[发布清单](docs/operations/release-checklist.md)。
+MVP 的本地开发主流程已实现；Windows 桌面 MVP（D0–D5）已完成，并于 2026-11-27 通过基于合成资料的本机验收。项目尚未部署到托管环境，也未获准处理真实个人资料或面向他人分发；不要把真实个人资料放入未验证的共享部署；上线前请完成[发布清单](docs/operations/release-checklist.md)。
 
 ## License
 

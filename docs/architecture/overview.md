@@ -22,9 +22,9 @@ Selected local files
             └─ optional consent-gated model calls from the worker
 ```
 
-## Planned Windows desktop topology
+## Windows desktop topology (implemented, D0–D5)
 
-A Windows desktop distribution is planned but not implemented. It uses a Tauri 2 shell to host the same React UI in WebView2 and to supervise a packaged Python sidecar containing the FastAPI app, the database-backed worker, SQLite and local object storage, Alembic migrations, and Tesseract. The shell owns file and folder selection, notifications, tray, autostart, single-instance behavior, and signed updates. It does not require Docker, and the local API binds to a random loopback port. See [Windows desktop architecture](desktop.md) and [ADR 0002](decisions/0002-windows-desktop-shell.md).
+The Windows 10/11 x64 desktop distribution is implemented and passed local single-user acceptance on 2026-11-27. It uses a Tauri 2 shell to host the same React UI in WebView2 and to supervise a packaged Python sidecar containing the FastAPI app, the database-backed worker, SQLite and local object storage, Alembic migrations, and Tesseract. The shell owns file and folder selection, notifications, tray, autostart, single-instance behavior, and launch/restart supervision. It does not require Docker, and the local API binds to a random loopback port with a per-launch secret and short-lived native path grants. Signed updates remain a public-distribution gate and are not implemented. See [Windows desktop architecture](desktop.md), [ADR 0002](decisions/0002-windows-desktop-shell.md), and [desktop acceptance](../operations/desktop-acceptance.md).
 
 ## Stack
 
@@ -32,6 +32,7 @@ A Windows desktop distribution is planned but not implemented. It uses a Tauri 2
 - **Database:** PostgreSQL for Compose/hosted configuration; SQLite for local API-only development. Vector search is not part of the MVP implementation.
 - **Storage:** local filesystem adapter for development and an S3-compatible adapter for production templates.
 - **Web:** React, TypeScript, Vite, served by Nginx in the production Compose template.
+- **Desktop:** Tauri 2 shell with WebView2, a PyInstaller one-folder Python sidecar, and an unsigned per-user NSIS installer for local single-user use.
 - **Local integration:** Python CLI for explicit file selection, preview, sync, and Obsidian export.
 - **Deployment:** Docker Compose with Caddy TLS proxy; operator-supplied database, private bucket, secrets, and backups.
 

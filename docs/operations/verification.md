@@ -6,6 +6,8 @@
 **Data:** generated fixtures and generated benchmark rows only; no personal source material
 **Runtime:** Windows, local SQLite, FastAPI `TestClient`, Node/npm, local Docker Compose; production credentials unavailable
 
+**Latest:** the 2026-11-27 Windows desktop release-candidate verification is recorded at the end of this file.
+
 ## Results
 
 | Check | Result |
@@ -49,3 +51,27 @@ The recorded API suite exercises model cost estimation and pricing disclosure, p
 ## Not verified
 
 The images were built and the three Compose services reached healthy on local Docker during the `2be4f1c` re-check, but no live DNS, TLS certificate, private S3 bucket, managed PostgreSQL, external provider, backup lifecycle, hosted restore exercise, security review, or user study was available. Those remain mandatory checklist items before accepting real personal data.
+
+## 2026-11-27 Windows desktop release candidate
+
+**Baseline:** `cb3c8a8` plus the R1 working-tree changes (product version aligned to 0.1.1, the F1 fix that makes the Web OpenAPI version use the package version, and documentation calibration; uncommitted at run time).
+**Data:** synthetic fixtures only; no real personal data and no external model provider.
+**Runtime:** Windows 11 x64 build 26300, local SQLite, WebView2 158.0.4370.33, Edge channel.
+
+| Check | Result |
+| --- | --- |
+| `python -m ruff check .` | Pass |
+| `python -m pytest -q` | 135 passed; one upstream `StarletteDeprecationWarning`; 207.86 s |
+| `python -m pytest -q tests/test_desktop_release.py` | 4 passed; includes the Web OpenAPI `info.version` contract |
+| Web OpenAPI `info.version` | `0.1.1`, equal to the package `__version__` |
+| `uv lock --check` with `UV_DEFAULT_INDEX`/`UV_INDEX_URL` set to PyPI | Pass; diff is the project version line only |
+| `cargo metadata --locked --no-deps` in `desktop/src-tauri` | Pass; `lifeos 0.1.1` |
+| `npm run lint` in `web/` | Pass; 0 warnings, 0 errors |
+| `npm run build` in `web/` | Pass |
+| `npx playwright test` with `LIFEOS_BROWSER_CHANNEL=msedge` and the PyPI index override | 18 passed in 27.3 s after the F1 fix (independent rerun); the earlier R1 run passed 18 in 47.2 s |
+| `desktop/build-installer.ps1 -SevenZip "C:/Program Files/7-Zip/7z.exe"` | Pass; NSIS 0.1.1 installer produced |
+| `desktop/smoke-installer.ps1` (F1-fixed artifact) | Pass; silent per-user install, packaged sidecar `--full` (570,621,506-byte chat preview 4.56 s, 197.6 MiB peak), silent uninstall, no registry or profile residue |
+| Version-aligned installer SHA-256 | `149FBC9F4C993268D58DC190406C88F5019B1156EE01F24772D006A6FC3F748C`, 94,285,130 bytes |
+| `git diff --check` | Pass |
+
+The default `npm run test:e2e` fails on this machine for environmental reasons: the user-level uv configuration points at an Aliyun mirror, so `uv run --locked` considers `uv.lock` stale, and Playwright 1.65.1 lacks its bundled Chromium revision. The Edge channel plus PyPI index override is the documented workaround; it is not a repository defect and the global environment was not modified. Docker daemon is not running, so PostgreSQL/Compose was not re-verified. GitHub is unreachable from this machine, so no CI result was checked. The D5 Windows 10/11 VM interaction matrix was not rerun for the version-aligned artifact; only local install/uninstall and packaged-sidecar smoke were executed. The Playwright suite was independently rerun after the F1 fix and passed all 18 tests. Full release details and artifact locations are in the [0.1.1 release record](releases/0.1.1.md).
