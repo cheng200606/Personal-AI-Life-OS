@@ -9,6 +9,13 @@ if (-not (Test-Path -LiteralPath $tauri)) { throw 'Run npm ci in web/ before bui
 
 $arguments = @('build', '--bundles', 'nsis')
 if ($Debug) { $arguments += '--debug' }
+# Public-distribution overlay: only applied when signing/updater environment variables
+# are set (see release-overlay.ps1); otherwise the build is identical to the local candidate.
+$overlayPath = & (Join-Path $PSScriptRoot 'release-overlay.ps1')
+if ($overlayPath) {
+    Write-Host "Applying release overlay: $overlayPath"
+    $arguments += @('--config', $overlayPath)
+}
 Push-Location $PSScriptRoot
 try {
     & $tauri @arguments -- --locked

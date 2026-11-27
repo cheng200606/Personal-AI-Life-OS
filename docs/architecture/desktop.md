@@ -53,4 +53,5 @@ API 密钥使用 Windows 凭据管理器。备份包含 SQLite 和其引用的�
 
 - 开发工具链为 Node 24、Rust/MSVC、Python 3.12 x64 和 PyInstaller。Windows x64 NSIS 以当前用户安装，依赖系统 WebView2，安装包带 Python、SQLite、迁移和 Tesseract 英文及简体中文模型。
 - 自动化构建、验证命令与人工环境要求见 [桌面本地验收](../operations/desktop-acceptance.md)。
+- 签名与更新器工件支持已内建于构建脚本：设置签名/更新密钥环境变量后 `build-installer.ps1` 自动附加发布 overlay，未设置时与本机候选构建一致；证书、SmartScreen 与更新托管决策及操作序列见 [公开分发 runbook](../operations/public-distribution.md)。
 - 公开分发前验证代码签名与签名更新、SmartScreen 和升级回滚。Web/托管门禁独立于本机验收。

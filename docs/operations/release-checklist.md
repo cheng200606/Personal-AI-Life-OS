@@ -7,6 +7,7 @@ This checklist separates repository evidence from hosting and user research evid
 ## Scope
 
 - **Solo local candidate (current):** the Windows desktop D0–D5 build passed local acceptance on 2026-11-27 using synthetic data. It runs on one local Windows account, needs no hosted infrastructure, and is neither signed nor distributed to other people. See [desktop acceptance](desktop-acceptance.md).
+- **Public distribution:** requires code signing, SmartScreen reputation, and update hosting before any installer is shared outside this machine. In-repo signing/updater build support is ready; see the [public distribution runbook](public-distribution.md).
 - **Hosted or other-people beta:** every unchecked item below still applies. Real personal data is not approved yet.
 
 ## Repository evidence
