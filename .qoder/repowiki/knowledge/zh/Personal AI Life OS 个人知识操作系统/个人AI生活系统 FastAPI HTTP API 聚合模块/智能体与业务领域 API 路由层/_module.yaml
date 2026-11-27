@@ -1,0 +1,26 @@
+schema_version: 1
+module_path: backend_api/agent_system
+title: 智能体与业务领域 API 路由层
+scope:
+    - src/personal_ai_life_os/api/routes/agent.py
+    - src/personal_ai_life_os/api/routes/jobs.py
+    - src/personal_ai_life_os/api/routes/plugins.py
+    - src/personal_ai_life_os/api/routes/model_providers.py
+    - src/personal_ai_life_os/api/routes/insights.py
+source_files: []
+depends_on: []
+related_to: []
+kk_module_id: ef0edf79-32f3-45af-8ed8-9d1c6b2bc2e0
+kk_cards:
+    architecture_design:
+        id: cf5b8fb6-2755-473f-9116-fe0bd7ec188a
+        title: 智能体与业务领域 API 路由层
+    coding_conventions:
+        id: 11f26c65-78e3-482a-83ca-a2bd6f12c0d9
+        title: 智能体与业务领域 API 路由层
+    overview:
+        id: f1981419-1f6d-43e3-bdec-f8494cae5bde
+        title: 智能体与业务领域 API 路由层
+    tech_stack:
+        id: 5c270575-74a4-420c-9b8d-48e1fb01d549
+        title: 智能体与业务领域 API 路由层

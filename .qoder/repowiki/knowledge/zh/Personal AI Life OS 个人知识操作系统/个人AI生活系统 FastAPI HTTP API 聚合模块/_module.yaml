@@ -1,0 +1,24 @@
+schema_version: 1
+module_path: backend_api
+title: 个人AI生活系统 FastAPI HTTP API 聚合模块
+scope:
+    - src/personal_ai_life_os/api/
+source_files: []
+depends_on: []
+related_to:
+    - path: web_app
+      reason: React 前端通过 Vite dev proxy / HTTP fetch 调用 backend_api 聚合的 FastAPI REST 端点（auth、agent、graph、search、sources 等）作为后端 UI。
+kk_module_id: e7f14802-07bd-45d7-97ac-13e429cee125
+kk_cards:
+    architecture_design:
+        id: fb8785c7-a891-496f-b415-13d52ff60b6f
+        title: 个人AI生活系统 FastAPI HTTP API 聚合模块
+    coding_conventions:
+        id: 76c369b6-4393-4f73-9c30-fb3a418f17d7
+        title: 个人AI生活系统 FastAPI HTTP API 聚合模块
+    overview:
+        id: d3bdfd70-235b-4835-9aa9-fd3055515e5a
+        title: 个人AI生活系统 FastAPI HTTP API 聚合模块
+    tech_stack:
+        id: 62db6cc8-1d63-4821-88c9-b215acbf83c5
+        title: 个人AI生活系统 FastAPI HTTP API 聚合模块

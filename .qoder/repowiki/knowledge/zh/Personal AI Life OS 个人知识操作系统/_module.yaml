@@ -1,0 +1,58 @@
+schema_version: 1
+module_path: root
+title: Personal AI Life OS 个人知识操作系统
+scope:
+    - README.md
+    - CONTRIBUTING.md
+    - SECURITY.md
+    - Dockerfile
+    - .gitignore
+    - .gitattributes
+    - pyproject.toml
+    - uv.lock
+    - alembic.ini
+source_files: []
+depends_on: []
+related_to: []
+kk_module_id: 7564c2de-3661-44f8-966b-b6f183aaee4b
+kk_cards:
+    architecture_design:
+        id: 32427a6e-09d8-437f-a5d5-4a7215d34d06
+        title: Personal AI Life OS 个人知识操作系统
+    coding_conventions:
+        id: c1d6efea-d108-4256-b452-48f725e8fc9e
+        title: Personal AI Life OS 个人知识操作系统
+    overview:
+        id: 0a166445-02e3-4b49-b8aa-052b66e98b77
+        title: Personal AI Life OS 个人知识操作系统
+    tech_stack:
+        id: bf0e10b7-6292-47f5-be7f-b482e779347b
+        title: Personal AI Life OS 个人知识操作系统
+    unique_setup_and_commands:
+        id: 8444d2f2-9cec-42db-b060-01023f5d116e
+        title: Personal AI Life OS 个人知识操作系统
+    build_system:
+        id: 76fd9515-f11a-4596-bc88-a4606246e20c
+        title: 多模态构建系统：uv + Tauri + Vite + Docker Compose
+    configuration_system:
+        id: b0437f8c-9566-43cc-be2a-8740d94a2737
+        title: 基于 pydantic-settings 的运行时配置系统
+    dependency_management:
+        id: 95d669b8-f558-4c85-850a-cf61e09b6fd8
+        title: 多语言项目依赖管理（uv + Cargo + npm）
+    error_handling:
+        id: ae4ede86-4e74-447c-a889-844a35bc533b
+        title: FastAPI 分层异常处理与领域错误类型
+    frontend_style:
+        id: fb27d26b-1e96-4975-8fa0-b7fd6feacd44
+        title: Web 前端原生 CSS 样式体系（无 CSS 框架）
+    logging_system:
+        id: 4081359b-0542-4aa3-9ad4-26d92e98a417
+        title: 基于 Python 标准库 logging 的轻量日志系统
+kk_repo_cards:
+    - build_system
+    - configuration_system
+    - dependency_management
+    - error_handling
+    - frontend_style
+    - logging_system

@@ -1,0 +1,29 @@
+schema_version: 1
+module_path: devcontainer_and_ci
+title: 开发容器与 CI/CD 流水线
+scope:
+    - .devcontainer/
+    - .github/workflows/
+source_files: []
+depends_on: []
+related_to:
+    - path: web_app
+      reason: devcontainer_and_ci/.github/workflows/ 定义 Python web/desktop 多阶段构建、pytest 测试执行、Tauri 前端构建等流水线步骤。
+kk_module_id: ddc0ad89-2a32-412a-a89c-469533834685
+kk_ordinal: 11
+kk_cards:
+    architecture_design:
+        id: 2005880e-edd1-4540-a355-34c3d10420bf
+        title: 开发容器与 CI/CD 流水线
+    coding_conventions:
+        id: b24c4b9f-db62-422b-94a9-198bd0c451c2
+        title: 开发容器与 CI/CD 流水线
+    overview:
+        id: 5e61bc14-09ec-411d-9806-3cb7a95d47ef
+        title: 开发容器与 CI/CD 流水线
+    tech_stack:
+        id: e34f80bb-271e-43fd-ac08-9e3c735dc687
+        title: 开发容器与 CI/CD 流水线
+    unique_setup_and_commands:
+        id: 26a52c14-04bc-42a6-bd8c-8c2da4a27783
+        title: 开发容器与 CI/CD 流水线

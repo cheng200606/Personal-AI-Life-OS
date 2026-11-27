@@ -1,0 +1,28 @@
+schema_version: 1
+module_path: database_migrations
+title: Alembic 数据库迁移
+scope:
+    - migrations/
+source_files: []
+depends_on: []
+related_to:
+    - path: scripts_and_evaluate
+      reason: scripts_and_evaluate/pg_dump/s3 备份脚本直接操作 database_migrations 所管理的 Postgres/SQLite 数据库实例。
+kk_module_id: 3059ecb3-3f10-4d3d-bde3-0d5b51966a21
+kk_ordinal: 6
+kk_cards:
+    architecture_design:
+        id: 0c3b2451-9285-47fb-94bd-eaf98c615406
+        title: Alembic 数据库迁移
+    coding_conventions:
+        id: a0f578cc-adfa-4867-9c1b-cf5b2e752417
+        title: Alembic 数据库迁移
+    overview:
+        id: 4233be4d-ba43-4ce4-a590-30715bd8b913
+        title: Alembic 数据库迁移
+    tech_stack:
+        id: 1232a0db-444c-46f9-9661-5bcf5e3b9144
+        title: Alembic 数据库迁移
+    unique_setup_and_commands:
+        id: 6eaabb44-c828-42ca-90bc-e69a49cea4d5
+        title: Alembic 数据库迁移

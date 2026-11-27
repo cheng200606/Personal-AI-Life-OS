@@ -1,0 +1,34 @@
+schema_version: 1
+module_path: backend_shared
+title: Personal AI Life OS 共享应用层
+scope:
+    - src/personal_ai_life_os/main.py
+    - src/personal_ai_life_os/config.py
+    - src/personal_ai_life_os/db.py
+    - src/personal_ai_life_os/models.py
+    - src/personal_ai_life_os/security.py
+    - src/personal_ai_life_os/storage.py
+    - src/personal_ai_life_os/cli.py
+    - src/personal_ai_life_os/desktop.py
+    - src/personal_ai_life_os/__init__.py
+source_files: []
+depends_on: []
+related_to: []
+kk_module_id: 1b61a517-43d4-411c-8344-d8a6161f6beb
+kk_ordinal: 3
+kk_cards:
+    architecture_design:
+        id: abfa0d8b-d212-4bb5-ac4e-1270fbe3ccc7
+        title: Personal AI Life OS 共享应用层
+    coding_conventions:
+        id: 7f9f50c2-9918-4259-8133-f92c7794b4f5
+        title: Personal AI Life OS 共享应用层
+    overview:
+        id: 1cefadea-aa12-4c3a-80f4-c52482375068
+        title: Personal AI Life OS 共享应用层
+    tech_stack:
+        id: 3361ba44-1857-4888-80ef-48eaac1956e1
+        title: Personal AI Life OS 共享应用层
+    unique_setup_and_commands:
+        id: bd099854-1c7b-47ca-a2ce-76acee1f46e5
+        title: Personal AI Life OS 共享应用层

@@ -1,0 +1,26 @@
+schema_version: 1
+module_path: web_app
+title: LifeOS Web 前端应用
+scope:
+    - web/
+source_files: []
+depends_on: []
+related_to: []
+kk_module_id: f2a4557f-25d3-4813-8038-9990893d4e69
+kk_ordinal: 4
+kk_cards:
+    architecture_design:
+        id: 6315737c-a4e2-4610-b387-c61d0083bad2
+        title: LifeOS Web 前端应用
+    coding_conventions:
+        id: 30a4cd0c-bc87-4552-9c01-1daba27bd1a2
+        title: LifeOS Web 前端应用
+    overview:
+        id: e84205eb-b15a-4580-be94-bdefa9914c63
+        title: LifeOS Web 前端应用
+    tech_stack:
+        id: 09119cef-9d40-447c-a501-e0a78b378a1e
+        title: LifeOS Web 前端应用
+    unique_setup_and_commands:
+        id: fbdad2e0-b84d-4d74-95d2-f795be2c044b
+        title: LifeOS Web 前端应用

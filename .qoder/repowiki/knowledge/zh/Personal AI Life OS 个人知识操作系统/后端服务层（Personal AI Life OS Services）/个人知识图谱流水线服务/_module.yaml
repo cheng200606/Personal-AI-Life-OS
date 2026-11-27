@@ -1,0 +1,32 @@
+schema_version: 1
+module_path: backend_services/graph_pipeline
+title: 个人知识图谱流水线服务
+scope:
+    - src/personal_ai_life_os/services/graph_extraction.py
+    - src/personal_ai_life_os/services/graph_evidence.py
+    - src/personal_ai_life_os/services/graph_qa.py
+    - src/personal_ai_life_os/services/graph_merges.py
+    - src/personal_ai_life_os/services/graph_review.py
+source_files: []
+depends_on: []
+related_to:
+    - path: backend_parsers
+      reason: graph_pipeline 的 graph_extraction 与 evidence_graph 服务使用 parsers/ 目录下的解析器将日历、聊天、文档等外部格式解析为 ParsedItem。
+    - path: fixtures
+      reason: fixtures/ 提供的虚构对话、Markdown 证据与评测用例被 backend_services/graph_pipeline 的审阅评估与导入流程消费。
+    - path: backend_api/evidence_graph
+      reason: 图谱查询/合并/审查 REST 路由直接调用 graph_extraction、graph_evidence、graph_review 等服务函数构建和审阅实体关系图。
+kk_module_id: 02d1827b-4477-40f6-ae15-00de879b304a
+kk_cards:
+    architecture_design:
+        id: efba5db7-72d2-4286-9cb3-b65f1f9e7f52
+        title: 个人知识图谱流水线服务
+    coding_conventions:
+        id: eb409612-2039-496e-8ac5-20d0e40a12c6
+        title: 个人知识图谱流水线服务
+    overview:
+        id: 92cbdf66-2ef4-483b-af18-1336c74c6db0
+        title: 个人知识图谱流水线服务
+    tech_stack:
+        id: 41a77017-66fb-4d35-beff-70bf155486d1
+        title: 个人知识图谱流水线服务

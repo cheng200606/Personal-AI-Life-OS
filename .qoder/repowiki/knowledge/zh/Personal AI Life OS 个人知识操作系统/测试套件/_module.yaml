@@ -1,0 +1,28 @@
+schema_version: 1
+module_path: tests
+title: 测试套件
+scope:
+    - tests/
+source_files: []
+depends_on: []
+related_to:
+    - path: backend_api
+      reason: tests/ 通过 pytest fixture 调用 backend_api/routes、backend_services、parser、desktop 子模块以验证 FastAPI 应用及桌面集成功能。
+kk_module_id: b74e2e65-e0fd-4d4c-9ce3-8d311f77dc31
+kk_ordinal: 8
+kk_cards:
+    architecture_design:
+        id: 10396614-9d6e-4ee6-a2b3-8396cff79e1a
+        title: 测试套件
+    coding_conventions:
+        id: 5273a079-d8a9-4656-9e91-5ab517c3f400
+        title: 测试套件
+    overview:
+        id: d23c11b7-3cf5-40ce-b53d-17e4e2f75457
+        title: 测试套件
+    tech_stack:
+        id: a7861042-59ce-459b-9264-c92ff7f4b653
+        title: 测试套件
+    unique_setup_and_commands:
+        id: 90afb195-113a-4e3a-8fad-d3523b557989
+        title: 测试套件

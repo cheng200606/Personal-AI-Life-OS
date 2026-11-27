@@ -1,0 +1,339 @@
+# 知识卡导出索引文件
+schema_version: 1
+locale: zh-CN
+commit: ae46972f543de20500ce7a13f156fb13d1050e86
+branch: main
+exported_at: "2026-11-27T14:54:41Z"
+modules:
+    backend_api:
+        dir_name: 个人AI生活系统 FastAPI HTTP API 聚合模块
+        title: 个人AI生活系统 FastAPI HTTP API 聚合模块
+        scope:
+            - src/personal_ai_life_os/api/
+        source_files: []
+        children:
+            - backend_api/agent_system
+            - backend_api/desktop_integrations
+            - backend_api/evidence_graph
+            - backend_api/identity_and_planning
+            - backend_api/platform_core
+            - backend_api/search_retrieval
+        depends_on: []
+        related_to:
+            - path: web_app
+              reason: React 前端通过 Vite dev proxy / HTTP fetch 调用 backend_api 聚合的 FastAPI REST 端点（auth、agent、graph、search、sources 等）作为后端 UI。
+    backend_api/agent_system:
+        dir_name: 智能体与业务领域 API 路由层
+        title: 智能体与业务领域 API 路由层
+        scope:
+            - src/personal_ai_life_os/api/routes/agent.py
+            - src/personal_ai_life_os/api/routes/jobs.py
+            - src/personal_ai_life_os/api/routes/plugins.py
+            - src/personal_ai_life_os/api/routes/model_providers.py
+            - src/personal_ai_life_os/api/routes/insights.py
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    backend_api/desktop_integrations:
+        dir_name: 桌面集成 API（本地分析、聊天导入、数据备份与文件夹授权）
+        title: 桌面集成 API（本地分析、聊天导入、数据备份与文件夹授权）
+        scope:
+            - src/personal_ai_life_os/api/routes/desktop_analysis.py
+            - src/personal_ai_life_os/api/routes/desktop_chats.py
+            - src/personal_ai_life_os/api/routes/desktop_data.py
+            - src/personal_ai_life_os/api/routes/desktop_folders.py
+        source_files: []
+        children: []
+        depends_on: []
+        related_to:
+            - path: backend_services/desktop_services
+              reason: /desktop/* 路由通过 desktop_provider、desktop_folders、desktop_analysis 服务实现本地模型凭据、Markdown/Obsidian 文件夹扫描导入与分析草稿生成。
+    backend_api/evidence_graph:
+        dir_name: 知识图谱与审查 API 路由层
+        title: 知识图谱与审查 API 路由层
+        scope:
+            - src/personal_ai_life_os/api/routes/graph.py
+            - src/personal_ai_life_os/api/routes/graph_merge.py
+            - src/personal_ai_life_os/api/routes/graph_review.py
+            - src/personal_ai_life_os/api/routes/ontology.py
+            - src/personal_ai_life_os/api/routes/review_schedule.py
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    backend_api/identity_and_planning:
+        dir_name: 身份认证与个人数据规划路由
+        title: 身份认证与个人数据规划路由
+        scope:
+            - src/personal_ai_life_os/api/routes/auth.py
+            - src/personal_ai_life_os/api/routes/account.py
+            - src/personal_ai_life_os/api/routes/organization.py
+            - src/personal_ai_life_os/api/routes/budget.py
+            - src/personal_ai_life_os/api/routes/items.py
+            - src/personal_ai_life_os/api/routes/quick_notes.py
+            - src/personal_ai_life_os/api/routes/reminders.py
+            - src/personal_ai_life_os/api/routes/reviews.py
+            - src/personal_ai_life_os/api/routes/review_schedule.py
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    backend_api/platform_core:
+        dir_name: FastAPI HTTP API 服务层
+        title: FastAPI HTTP API 服务层
+        scope:
+            - src/personal_ai_life_os/api/
+            - src/personal_ai_life_os/api/routes/__init__.py
+            - src/personal_ai_life_os/api/routes/extractions.py
+            - src/personal_ai_life_os/api/routes/imports.py
+            - src/personal_ai_life_os/api/routes/health.py
+            - src/personal_ai_life_os/api/routes/metrics.py
+            - src/personal_ai_life_os/api/routes/qa.py
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    backend_api/search_retrieval:
+        dir_name: 搜索、已保存查询与数据源路由
+        title: 搜索、已保存查询与数据源路由
+        scope:
+            - src/personal_ai_life_os/api/routes/search.py
+            - src/personal_ai_life_os/api/routes/saved_searches.py
+            - src/personal_ai_life_os/api/routes/sources.py
+        source_files: []
+        children: []
+        depends_on: []
+        related_to:
+            - path: backend_services/scheduling
+              reason: 搜索与已保存查询路由读写 search_index.py 提供的 SQLite/PostgreSQL 全文索引，并由 jobs.py 提供后台任务执行能力。
+    backend_parsers:
+        dir_name: 多源数据解析器集合
+        title: 多源数据解析器集合
+        scope:
+            - src/personal_ai_life_os/parsers/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to:
+            - path: tests
+              reason: tests/ 覆盖 backend_parsers（ICS、聊天导出、图片、Markdown 记忆）的各解析器输出，作为独立测试单元运行。
+    backend_services:
+        dir_name: 后端服务层（Personal AI Life OS Services）
+        title: 后端服务层（Personal AI Life OS Services）
+        scope:
+            - src/personal_ai_life_os/services/
+        source_files: []
+        children:
+            - backend_services/desktop_services
+            - backend_services/graph_pipeline
+            - backend_services/knowledge_ops
+            - backend_services/model_services
+            - backend_services/scheduling
+        depends_on: []
+        related_to: []
+    backend_services/desktop_services:
+        dir_name: 桌面服务集成（本地模型、文件夹同步与分析）
+        title: 桌面服务集成（本地模型、文件夹同步与分析）
+        scope:
+            - src/personal_ai_life_os/services/desktop_provider.py
+            - src/personal_ai_life_os/services/desktop_folders.py
+            - src/personal_ai_life_os/services/desktop_analysis.py
+            - src/personal_ai_life_os/services/desktop_backup.py
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    backend_services/graph_pipeline:
+        dir_name: 个人知识图谱流水线服务
+        title: 个人知识图谱流水线服务
+        scope:
+            - src/personal_ai_life_os/services/graph_extraction.py
+            - src/personal_ai_life_os/services/graph_evidence.py
+            - src/personal_ai_life_os/services/graph_qa.py
+            - src/personal_ai_life_os/services/graph_merges.py
+            - src/personal_ai_life_os/services/graph_review.py
+        source_files: []
+        children: []
+        depends_on: []
+        related_to:
+            - path: backend_parsers
+              reason: graph_pipeline 的 graph_extraction 与 evidence_graph 服务使用 parsers/ 目录下的解析器将日历、聊天、文档等外部格式解析为 ParsedItem。
+            - path: fixtures
+              reason: fixtures/ 提供的虚构对话、Markdown 证据与评测用例被 backend_services/graph_pipeline 的审阅评估与导入流程消费。
+            - path: backend_api/evidence_graph
+              reason: 图谱查询/合并/审查 REST 路由直接调用 graph_extraction、graph_evidence、graph_review 等服务函数构建和审阅实体关系图。
+    backend_services/knowledge_ops:
+        dir_name: 知识图谱辅助服务集（插件、本体、洞察与删除）
+        title: 知识图谱辅助服务集（插件、本体、洞察与删除）
+        scope:
+            - src/personal_ai_life_os/services/plugins.py
+            - src/personal_ai_life_os/services/ontology.py
+            - src/personal_ai_life_os/services/insights.py
+            - src/personal_ai_life_os/services/review_insights.py
+            - src/personal_ai_life_os/services/deletion.py
+        source_files: []
+        children: []
+        depends_on: []
+        related_to:
+            - path: backend_api/identity_and_planning
+              reason: 身份与规划路由调用 ontology、plugins、insights、deleter 服务处理本体提议审批、本地插件目录权限管理与基于图证据的可解释洞察。
+    backend_services/model_services:
+        dir_name: 模型供应商与使用授权管理
+        title: 模型供应商与使用授权管理
+        scope:
+            - src/personal_ai_life_os/services/model_providers.py
+            - src/personal_ai_life_os/services/model_usage.py
+            - src/personal_ai_life_os/services/model_consent.py
+        source_files: []
+        children: []
+        depends_on: []
+        related_to:
+            - path: backend_api/agent_system
+              reason: Agent/插件/模型提供商路由调用 model_providers、model_consent、model_usage 来解析供应商凭据与管理按 owner/provider 维度的使用授权。
+    backend_services/scheduling:
+        dir_name: 后台任务调度与全文索引
+        title: 后台任务调度与全文索引
+        scope:
+            - src/personal_ai_life_os/services/scheduling.py
+            - src/personal_ai_life_os/services/jobs.py
+            - src/personal_ai_life_os/services/search_index.py
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    backend_shared:
+        dir_name: Personal AI Life OS 共享应用层
+        title: Personal AI Life OS 共享应用层
+        scope:
+            - src/personal_ai_life_os/main.py
+            - src/personal_ai_life_os/config.py
+            - src/personal_ai_life_os/db.py
+            - src/personal_ai_life_os/models.py
+            - src/personal_ai_life_os/security.py
+            - src/personal_ai_life_os/storage.py
+            - src/personal_ai_life_os/cli.py
+            - src/personal_ai_life_os/desktop.py
+            - src/personal_ai_life_os/__init__.py
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    database_migrations:
+        dir_name: Alembic 数据库迁移
+        title: Alembic 数据库迁移
+        scope:
+            - migrations/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to:
+            - path: scripts_and_evaluate
+              reason: scripts_and_evaluate/pg_dump/s3 备份脚本直接操作 database_migrations 所管理的 Postgres/SQLite 数据库实例。
+    desktop_client:
+        dir_name: 桌面客户端与安装包构建
+        title: 桌面客户端与安装包构建
+        scope:
+            - desktop/src-tauri/
+            - desktop/build-installer.ps1
+            - desktop/build-sidecar.ps1
+            - desktop/prepare-ocr.ps1
+            - desktop/smoke-installer.ps1
+            - desktop/smoke-sidecar.py
+        source_files: []
+        children: []
+        depends_on: []
+        related_to:
+            - path: backend_api
+              reason: Tauri Rust shell 与 PyInstaller sidecar 通过 Tauri invoke 桥与 FastAPI /desktop/* 端点交互以获取系统级备份还原、本地文件分析与 Markdown 导出能力。
+    devcontainer_and_ci:
+        dir_name: 开发容器与 CI_CD 流水线
+        title: 开发容器与 CI/CD 流水线
+        scope:
+            - .devcontainer/
+            - .github/workflows/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to:
+            - path: web_app
+              reason: devcontainer_and_ci/.github/workflows/ 定义 Python web/desktop 多阶段构建、pytest 测试执行、Tauri 前端构建等流水线步骤。
+    docs:
+        dir_name: 项目文档与架构决策归档
+        title: 项目文档与架构决策归档
+        scope:
+            - docs/
+            - .learnings/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    fixtures:
+        dir_name: 合成测试数据固定集（Synthetic Fixtures）
+        title: 合成测试数据固定集（Synthetic Fixtures）
+        scope:
+            - fixtures/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to:
+            - path: scripts_and_evaluate
+              reason: scripts_and_evaluate/eval 基准使用 fixtures/ 的合成对话与预期结果驱动 agent/system 评估演练。
+    root:
+        dir_name: Personal AI Life OS 个人知识操作系统
+        title: Personal AI Life OS 个人知识操作系统
+        scope:
+            - README.md
+            - CONTRIBUTING.md
+            - SECURITY.md
+            - Dockerfile
+            - .gitignore
+            - .gitattributes
+            - pyproject.toml
+            - uv.lock
+            - alembic.ini
+        source_files: []
+        children:
+            - backend_api
+            - backend_parsers
+            - backend_services
+            - backend_shared
+            - database_migrations
+            - desktop_client
+            - devcontainer_and_ci
+            - docs
+            - fixtures
+            - scripts_and_evaluate
+            - tests
+            - web_app
+        depends_on: []
+        related_to: []
+    scripts_and_evaluate:
+        dir_name: 运维脚本与评估工具集
+        title: 运维脚本与评估工具集
+        scope:
+            - scripts/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    tests:
+        dir_name: 测试套件
+        title: 测试套件
+        scope:
+            - tests/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to:
+            - path: backend_api
+              reason: tests/ 通过 pytest fixture 调用 backend_api/routes、backend_services、parser、desktop 子模块以验证 FastAPI 应用及桌面集成功能。
+    web_app:
+        dir_name: LifeOS Web 前端应用
+        title: LifeOS Web 前端应用
+        scope:
+            - web/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []

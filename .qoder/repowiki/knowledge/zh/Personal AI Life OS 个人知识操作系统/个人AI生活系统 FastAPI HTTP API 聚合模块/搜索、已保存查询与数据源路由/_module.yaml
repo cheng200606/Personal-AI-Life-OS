@@ -1,0 +1,27 @@
+schema_version: 1
+module_path: backend_api/search_retrieval
+title: 搜索、已保存查询与数据源路由
+scope:
+    - src/personal_ai_life_os/api/routes/search.py
+    - src/personal_ai_life_os/api/routes/saved_searches.py
+    - src/personal_ai_life_os/api/routes/sources.py
+source_files: []
+depends_on: []
+related_to:
+    - path: backend_services/scheduling
+      reason: 搜索与已保存查询路由读写 search_index.py 提供的 SQLite/PostgreSQL 全文索引，并由 jobs.py 提供后台任务执行能力。
+kk_module_id: 537378cb-5afd-49ba-850c-941ff9175a0a
+kk_ordinal: 2
+kk_cards:
+    architecture_design:
+        id: a1e38329-014f-43d6-8f37-a525fd5e285b
+        title: 搜索、已保存查询与数据源路由
+    coding_conventions:
+        id: be07bf35-ea7f-4702-a5a6-dcd9e40c86f4
+        title: 搜索、已保存查询与数据源路由
+    overview:
+        id: 67112470-23bb-455d-bc2f-2cbfcc524fef
+        title: 搜索、已保存查询与数据源路由
+    tech_stack:
+        id: 65821428-b18e-461a-b044-8638d35b5b5d
+        title: 搜索、已保存查询与数据源路由

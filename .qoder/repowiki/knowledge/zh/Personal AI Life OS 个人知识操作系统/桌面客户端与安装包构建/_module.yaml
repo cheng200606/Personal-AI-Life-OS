@@ -1,0 +1,33 @@
+schema_version: 1
+module_path: desktop_client
+title: 桌面客户端与安装包构建
+scope:
+    - desktop/src-tauri/
+    - desktop/build-installer.ps1
+    - desktop/build-sidecar.ps1
+    - desktop/prepare-ocr.ps1
+    - desktop/smoke-installer.ps1
+    - desktop/smoke-sidecar.py
+source_files: []
+depends_on: []
+related_to:
+    - path: backend_api
+      reason: Tauri Rust shell 与 PyInstaller sidecar 通过 Tauri invoke 桥与 FastAPI /desktop/* 端点交互以获取系统级备份还原、本地文件分析与 Markdown 导出能力。
+kk_module_id: 57dc2ef1-b96b-4c4e-92c7-eca8dbe38495
+kk_ordinal: 5
+kk_cards:
+    architecture_design:
+        id: 5d4d3c2f-ccef-40fd-9fcb-02ff306355fd
+        title: 桌面客户端与安装包构建
+    coding_conventions:
+        id: ee517ccd-66bf-46d9-8c50-e023391d8933
+        title: 桌面客户端与安装包构建
+    overview:
+        id: f1064f86-006d-4d86-895e-1cae3c1fc841
+        title: 桌面客户端与安装包构建
+    tech_stack:
+        id: f0864d91-87c2-4888-b84c-fd6c4435d3a1
+        title: 桌面客户端与安装包构建
+    unique_setup_and_commands:
+        id: 7bb2edb8-44b9-433b-adce-16d2d154caf7
+        title: 桌面客户端与安装包构建

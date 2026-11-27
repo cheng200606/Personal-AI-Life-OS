@@ -1,0 +1,26 @@
+schema_version: 1
+module_path: scripts_and_evaluate
+title: 运维脚本与评估工具集
+scope:
+    - scripts/
+source_files: []
+depends_on: []
+related_to: []
+kk_module_id: d8026d92-7d15-4365-af64-4a7e26984986
+kk_ordinal: 7
+kk_cards:
+    architecture_design:
+        id: 4a2b9f6f-03f5-46a6-9b4e-4bf882fbc19c
+        title: 运维脚本与评估工具集
+    coding_conventions:
+        id: 185ed99a-32a3-4d3d-8fa9-31f6c44dbce1
+        title: 运维脚本与评估工具集
+    overview:
+        id: 3d5a6995-f8dc-4127-a80b-cf6d9f6bd703
+        title: 运维脚本与评估工具集
+    tech_stack:
+        id: b403160e-cc1c-4cef-a74f-b5f1fce07390
+        title: 运维脚本与评估工具集
+    unique_setup_and_commands:
+        id: 1f7b686d-b9a5-47ed-a9db-54baeb8ba6ca
+        title: 运维脚本与评估工具集

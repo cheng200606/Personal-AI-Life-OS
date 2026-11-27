@@ -1,0 +1,24 @@
+schema_version: 1
+module_path: docs
+title: 项目文档与架构决策归档
+scope:
+    - docs/
+    - .learnings/
+source_files: []
+depends_on: []
+related_to: []
+kk_module_id: 17f500c5-b551-4bd5-8750-f2b3a544bbba
+kk_ordinal: 10
+kk_cards:
+    architecture_design:
+        id: 954ad672-f936-4e4e-8c7b-49ea9c3fe4ae
+        title: 项目文档与架构决策归档
+    coding_conventions:
+        id: bb2e0423-27d4-4fbb-81f0-8d32c49870b1
+        title: 项目文档与架构决策归档
+    overview:
+        id: 1906493a-4e11-4552-918d-19780ada78ed
+        title: 项目文档与架构决策归档
+    tech_stack:
+        id: 086106eb-11c1-4202-b618-0f01aa9b363e
+        title: 项目文档与架构决策归档

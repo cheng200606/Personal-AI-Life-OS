@@ -1,0 +1,22 @@
+schema_version: 1
+module_path: backend_parsers
+title: 多源数据解析器集合
+scope:
+    - src/personal_ai_life_os/parsers/
+source_files: []
+depends_on: []
+related_to:
+    - path: tests
+      reason: tests/ 覆盖 backend_parsers（ICS、聊天导出、图片、Markdown 记忆）的各解析器输出，作为独立测试单元运行。
+kk_module_id: 3324e44d-1b2c-4489-9b3a-ea8c96687769
+kk_ordinal: 2
+kk_cards:
+    architecture_design:
+        id: 4ed32277-0cd8-489b-b2af-1a3c2213353d
+        title: 多源数据解析器集合
+    coding_conventions:
+        id: 161f27f2-7fc5-4348-925d-26decfdd36e8
+        title: 多源数据解析器集合
+    overview:
+        id: 1505d7cc-7f82-413f-b736-04207856ff1b
+        title: 多源数据解析器集合

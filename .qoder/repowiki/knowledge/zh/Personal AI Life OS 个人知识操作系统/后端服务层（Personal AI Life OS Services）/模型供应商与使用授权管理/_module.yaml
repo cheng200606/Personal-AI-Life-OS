@@ -1,0 +1,27 @@
+schema_version: 1
+module_path: backend_services/model_services
+title: 模型供应商与使用授权管理
+scope:
+    - src/personal_ai_life_os/services/model_providers.py
+    - src/personal_ai_life_os/services/model_usage.py
+    - src/personal_ai_life_os/services/model_consent.py
+source_files: []
+depends_on: []
+related_to:
+    - path: backend_api/agent_system
+      reason: Agent/插件/模型提供商路由调用 model_providers、model_consent、model_usage 来解析供应商凭据与管理按 owner/provider 维度的使用授权。
+kk_module_id: dc4df12f-63b6-4850-b3cd-1b294225c5ac
+kk_ordinal: 1
+kk_cards:
+    architecture_design:
+        id: 353f87de-1fd3-4512-8211-4d56b9d245e0
+        title: 模型供应商与使用授权管理
+    coding_conventions:
+        id: 287c80cf-7925-4c8f-958f-093a2afad2e4
+        title: 模型供应商与使用授权管理
+    overview:
+        id: e4bfd4b2-c394-4cc9-95a0-8d0e180eb2c9
+        title: 模型供应商与使用授权管理
+    tech_stack:
+        id: bf9529c4-cd07-4160-ad5b-a7d5b97b4fe6
+        title: 模型供应商与使用授权管理

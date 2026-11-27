@@ -1,0 +1,31 @@
+schema_version: 1
+module_path: backend_api/desktop_integrations
+title: 桌面集成 API（本地分析、聊天导入、数据备份与文件夹授权）
+scope:
+    - src/personal_ai_life_os/api/routes/desktop_analysis.py
+    - src/personal_ai_life_os/api/routes/desktop_chats.py
+    - src/personal_ai_life_os/api/routes/desktop_data.py
+    - src/personal_ai_life_os/api/routes/desktop_folders.py
+source_files: []
+depends_on: []
+related_to:
+    - path: backend_services/desktop_services
+      reason: /desktop/* 路由通过 desktop_provider、desktop_folders、desktop_analysis 服务实现本地模型凭据、Markdown/Obsidian 文件夹扫描导入与分析草稿生成。
+kk_module_id: e344cb9b-3e5b-4431-9acc-c7224854ae56
+kk_ordinal: 3
+kk_cards:
+    architecture_design:
+        id: d83f3c97-89fb-49ed-9baf-27930edad442
+        title: 桌面集成 API（本地分析、聊天导入、数据备份与文件夹授权）
+    coding_conventions:
+        id: bde401a0-af98-4486-bfc7-bb2b33956365
+        title: 桌面集成 API（本地分析、聊天导入、数据备份与文件夹授权）
+    overview:
+        id: ac606a88-b84b-49d9-9795-65bb0906e548
+        title: 桌面集成 API（本地分析、聊天导入、数据备份与文件夹授权）
+    tech_stack:
+        id: 354f813f-444a-400f-a085-6e91823ed0e4
+        title: 桌面集成 API（本地分析、聊天导入、数据备份与文件夹授权）
+    unique_setup_and_commands:
+        id: 2e773ded-92a0-4e34-a138-169eab21154a
+        title: 桌面集成 API（本地分析、聊天导入、数据备份与文件夹授权）

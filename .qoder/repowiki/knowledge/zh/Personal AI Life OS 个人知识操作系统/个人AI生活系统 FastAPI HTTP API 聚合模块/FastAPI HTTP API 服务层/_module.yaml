@@ -1,0 +1,29 @@
+schema_version: 1
+module_path: backend_api/platform_core
+title: FastAPI HTTP API 服务层
+scope:
+    - src/personal_ai_life_os/api/
+    - src/personal_ai_life_os/api/routes/__init__.py
+    - src/personal_ai_life_os/api/routes/extractions.py
+    - src/personal_ai_life_os/api/routes/imports.py
+    - src/personal_ai_life_os/api/routes/health.py
+    - src/personal_ai_life_os/api/routes/metrics.py
+    - src/personal_ai_life_os/api/routes/qa.py
+source_files: []
+depends_on: []
+related_to: []
+kk_module_id: 289b9ccf-1f22-449c-a590-47bf1d2dd09c
+kk_ordinal: 5
+kk_cards:
+    architecture_design:
+        id: deb10b51-67d3-4613-8af5-5764bf9f5998
+        title: FastAPI HTTP API 服务层
+    coding_conventions:
+        id: 13dae67c-4809-4adb-b991-ba70bfcf21b3
+        title: FastAPI HTTP API 服务层
+    overview:
+        id: 14d5bfd6-ce02-4272-a74d-3f5ef1103cfa
+        title: FastAPI HTTP API 服务层
+    tech_stack:
+        id: 079b3e2d-3c07-4d37-b1df-1dfb4214cd5f
+        title: FastAPI HTTP API 服务层

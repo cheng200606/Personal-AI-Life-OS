@@ -1,0 +1,28 @@
+schema_version: 1
+module_path: fixtures
+title: 合成测试数据固定集（Synthetic Fixtures）
+scope:
+    - fixtures/
+source_files: []
+depends_on: []
+related_to:
+    - path: scripts_and_evaluate
+      reason: scripts_and_evaluate/eval 基准使用 fixtures/ 的合成对话与预期结果驱动 agent/system 评估演练。
+kk_module_id: 369ebe52-0ade-4b9a-96cf-79609b5e3149
+kk_ordinal: 9
+kk_cards:
+    architecture_design:
+        id: 915477cf-8f4f-4f82-ab9f-5f9bfb79d97f
+        title: 合成测试数据固定集（Synthetic Fixtures）
+    coding_conventions:
+        id: 03d3a308-cdd3-4c75-aba4-7c9f52fac074
+        title: 合成测试数据固定集（Synthetic Fixtures）
+    overview:
+        id: e6767da9-9aa8-4c93-8ad3-77b161f89a67
+        title: 合成测试数据固定集（Synthetic Fixtures）
+    tech_stack:
+        id: 0698707a-ef7a-48ff-a65c-235a22cc09c1
+        title: 合成测试数据固定集（Synthetic Fixtures）
+    unique_setup_and_commands:
+        id: b813efce-6ba1-4a03-a579-d5826ad7619e
+        title: 合成测试数据固定集（Synthetic Fixtures）

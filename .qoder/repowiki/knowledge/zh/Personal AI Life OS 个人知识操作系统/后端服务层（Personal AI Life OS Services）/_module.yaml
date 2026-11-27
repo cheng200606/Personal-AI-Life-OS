@@ -1,0 +1,26 @@
+schema_version: 1
+module_path: backend_services
+title: 后端服务层（Personal AI Life OS Services）
+scope:
+    - src/personal_ai_life_os/services/
+source_files: []
+depends_on: []
+related_to: []
+kk_module_id: b379ff1b-e841-4e39-9407-97d80f3870d7
+kk_ordinal: 1
+kk_cards:
+    architecture_design:
+        id: ac245d37-4869-4b38-bd18-9b8d61e9cc87
+        title: 后端服务层（Personal AI Life OS Services）
+    coding_conventions:
+        id: b541412d-2f5b-4c9f-9c1c-ad9dfbbb4bb6
+        title: 后端服务层（Personal AI Life OS Services）
+    overview:
+        id: ef3acf74-4776-42c0-ac35-2a68ad70d322
+        title: 后端服务层（Personal AI Life OS Services）
+    tech_stack:
+        id: 546ea3dc-7263-47f6-bb28-9dda55523f21
+        title: 后端服务层（Personal AI Life OS Services）
+    unique_setup_and_commands:
+        id: f938511e-0421-48d5-b937-93c414da4a9e
+        title: 后端服务层（Personal AI Life OS Services）

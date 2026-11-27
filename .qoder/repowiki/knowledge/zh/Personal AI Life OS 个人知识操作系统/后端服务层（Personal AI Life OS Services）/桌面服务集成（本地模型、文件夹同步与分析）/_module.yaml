@@ -1,0 +1,29 @@
+schema_version: 1
+module_path: backend_services/desktop_services
+title: 桌面服务集成（本地模型、文件夹同步与分析）
+scope:
+    - src/personal_ai_life_os/services/desktop_provider.py
+    - src/personal_ai_life_os/services/desktop_folders.py
+    - src/personal_ai_life_os/services/desktop_analysis.py
+    - src/personal_ai_life_os/services/desktop_backup.py
+source_files: []
+depends_on: []
+related_to: []
+kk_module_id: f07b0858-b154-48ba-b8dc-3dd5fcd29caa
+kk_ordinal: 3
+kk_cards:
+    architecture_design:
+        id: 44b66031-b632-4d67-aaa2-65fdb220bca8
+        title: 桌面服务集成（本地模型、文件夹同步与分析）
+    coding_conventions:
+        id: 935ed578-aabb-4b63-83b3-2feaade92ac7
+        title: 桌面服务集成（本地模型、文件夹同步与分析）
+    overview:
+        id: 563c29e0-bc07-4ca8-9ffd-144d3ce14ea8
+        title: 桌面服务集成（本地模型、文件夹同步与分析）
+    tech_stack:
+        id: 7c42aca9-237e-4792-91d5-aa1573abba2d
+        title: 桌面服务集成（本地模型、文件夹同步与分析）
+    unique_setup_and_commands:
+        id: b3079d0d-c9cc-4e69-a008-0fcc9e51de5c
+        title: 桌面服务集成（本地模型、文件夹同步与分析）

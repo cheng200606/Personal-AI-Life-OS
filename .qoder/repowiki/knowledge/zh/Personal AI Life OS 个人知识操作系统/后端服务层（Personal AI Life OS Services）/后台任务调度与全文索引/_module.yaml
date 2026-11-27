@@ -1,0 +1,25 @@
+schema_version: 1
+module_path: backend_services/scheduling
+title: 后台任务调度与全文索引
+scope:
+    - src/personal_ai_life_os/services/scheduling.py
+    - src/personal_ai_life_os/services/jobs.py
+    - src/personal_ai_life_os/services/search_index.py
+source_files: []
+depends_on: []
+related_to: []
+kk_module_id: 6c66e4f0-e150-491f-8d90-982d018cf1fd
+kk_ordinal: 2
+kk_cards:
+    architecture_design:
+        id: 0a8e5f77-eb37-452e-a57e-74d8e639f50b
+        title: 后台任务调度与全文索引
+    coding_conventions:
+        id: a5cb7fbd-015d-48c6-b563-2abc3b18495f
+        title: 后台任务调度与全文索引
+    overview:
+        id: 8a035cfb-69f5-406c-9f56-3c6003861c03
+        title: 后台任务调度与全文索引
+    tech_stack:
+        id: f310f8c7-5a24-462e-9948-20a672cae05c
+        title: 后台任务调度与全文索引

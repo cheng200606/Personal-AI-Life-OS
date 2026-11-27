@@ -1,0 +1,27 @@
+schema_version: 1
+module_path: backend_api/evidence_graph
+title: 知识图谱与审查 API 路由层
+scope:
+    - src/personal_ai_life_os/api/routes/graph.py
+    - src/personal_ai_life_os/api/routes/graph_merge.py
+    - src/personal_ai_life_os/api/routes/graph_review.py
+    - src/personal_ai_life_os/api/routes/ontology.py
+    - src/personal_ai_life_os/api/routes/review_schedule.py
+source_files: []
+depends_on: []
+related_to: []
+kk_module_id: f7e260e1-329d-4c26-b0c6-5b2eb4fbf2f8
+kk_ordinal: 1
+kk_cards:
+    architecture_design:
+        id: 76965e10-32d1-43c9-81a9-876c33d6ea52
+        title: 知识图谱与审查 API 路由层
+    coding_conventions:
+        id: e34d8716-0493-4c5c-8bf9-7929e4c37f64
+        title: 知识图谱与审查 API 路由层
+    overview:
+        id: d7dc7a5e-f4f4-4ddb-997a-3327d0d8c342
+        title: 知识图谱与审查 API 路由层
+    tech_stack:
+        id: d6c06c97-6b73-44b5-a49c-539eced678c6
+        title: 知识图谱与审查 API 路由层

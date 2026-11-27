@@ -1,0 +1,31 @@
+schema_version: 1
+module_path: backend_api/identity_and_planning
+title: 身份认证与个人数据规划路由
+scope:
+    - src/personal_ai_life_os/api/routes/auth.py
+    - src/personal_ai_life_os/api/routes/account.py
+    - src/personal_ai_life_os/api/routes/organization.py
+    - src/personal_ai_life_os/api/routes/budget.py
+    - src/personal_ai_life_os/api/routes/items.py
+    - src/personal_ai_life_os/api/routes/quick_notes.py
+    - src/personal_ai_life_os/api/routes/reminders.py
+    - src/personal_ai_life_os/api/routes/reviews.py
+    - src/personal_ai_life_os/api/routes/review_schedule.py
+source_files: []
+depends_on: []
+related_to: []
+kk_module_id: 76ae892a-b9b9-4485-b397-fb26d8b946ff
+kk_ordinal: 4
+kk_cards:
+    architecture_design:
+        id: 6683d465-849b-4f20-bc70-c89c9e9c71e1
+        title: 身份认证与个人数据规划路由
+    coding_conventions:
+        id: 6866757c-e8c8-4f18-a86d-7eb8e231ca02
+        title: 身份认证与个人数据规划路由
+    overview:
+        id: a5484e04-146b-4c36-89db-3cc021c5c780
+        title: 身份认证与个人数据规划路由
+    tech_stack:
+        id: cb343d18-9649-4a73-b0d5-b7c1939683ff
+        title: 身份认证与个人数据规划路由

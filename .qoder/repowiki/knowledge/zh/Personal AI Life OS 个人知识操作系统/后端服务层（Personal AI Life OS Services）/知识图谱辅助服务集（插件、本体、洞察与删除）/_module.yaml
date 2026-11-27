@@ -1,0 +1,29 @@
+schema_version: 1
+module_path: backend_services/knowledge_ops
+title: 知识图谱辅助服务集（插件、本体、洞察与删除）
+scope:
+    - src/personal_ai_life_os/services/plugins.py
+    - src/personal_ai_life_os/services/ontology.py
+    - src/personal_ai_life_os/services/insights.py
+    - src/personal_ai_life_os/services/review_insights.py
+    - src/personal_ai_life_os/services/deletion.py
+source_files: []
+depends_on: []
+related_to:
+    - path: backend_api/identity_and_planning
+      reason: 身份与规划路由调用 ontology、plugins、insights、deleter 服务处理本体提议审批、本地插件目录权限管理与基于图证据的可解释洞察。
+kk_module_id: 240dcfcc-7a7f-40f9-a66e-910f3cb4dd11
+kk_ordinal: 4
+kk_cards:
+    architecture_design:
+        id: 13d80c7e-6bf4-4e9e-8a35-b5a8fc7f30c0
+        title: 知识图谱辅助服务集（插件、本体、洞察与删除）
+    coding_conventions:
+        id: 187f9148-2b4b-4d7a-a1ea-596fe18531e9
+        title: 知识图谱辅助服务集（插件、本体、洞察与删除）
+    overview:
+        id: cbcb21db-586f-48c4-8e23-2d74d695152c
+        title: 知识图谱辅助服务集（插件、本体、洞察与删除）
+    tech_stack:
+        id: a6c2c7ff-c831-46be-a4a1-88324e263efa
+        title: 知识图谱辅助服务集（插件、本体、洞察与删除）
