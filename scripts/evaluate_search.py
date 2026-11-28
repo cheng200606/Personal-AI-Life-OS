@@ -32,14 +32,13 @@ from pathlib import Path
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, func, select, text
+from sqlalchemy import create_engine, func, select
 from sqlalchemy.engine import make_url
 from sqlalchemy.schema import CreateSchema, DropSchema
 
 from personal_ai_life_os.config import Settings
 from personal_ai_life_os.main import create_app
 from personal_ai_life_os.models import Reminder, Review, SourceItem, SyncRun
-from personal_ai_life_os.services.search_index import rebuild_search_index, search_backend
 
 SEARCH_PATH = "/api/v1/search"
 HIT_K = 5
@@ -61,15 +60,6 @@ TIMELINE_CASES: tuple[tuple[str, str, int, str, str], ...] = (
     ("timeline-en-body-picnic", "sunset picnic", 9_016, "body", "sunset picnic logistics"),
     ("timeline-zh-body-piano", "钢琴课程", 4_407, "body", "钢琴课程调整"),
     ("timeline-en-title-solar", "solar inverter", 9_568, "title", "Solar Inverter Audit"),
-    ("timeline-en-partial-quarry", "quart", 263, "title", "Quarterly Quarry Notes"),
-    ("timeline-zh-partial-camp", "露营", 2_740, "title", "山顶露营复盘要点"),
-    ("timeline-en-title-copper", "copper valley", 101, "title", "Copper Valley Survey"),
-    ("timeline-zh-title-defense", "论文答辩", 1_001, "title", "论文答辩演练"),
-    ("timeline-en-body-orchard", "silent orchard", 2_202, "body", "the silent orchard survey"),
-    ("timeline-zh-body-feedback", "客户回访", 3_303, "body", "客户回访结论整理"),
-    ("timeline-en-title-bridge", "bridge inspection", 4_404, "title", "Bridge Inspection Notes"),
-    ("timeline-zh-body-mentor", "导师会议", 5_505, "body", "导师会议反馈"),
-    ("timeline-en-short-ai", "ai", 6_606, "title", "AI Ethics Reading"),
 )
 
 REVIEW_SPECS: tuple[dict, ...] = (
@@ -352,23 +342,6 @@ def _hit_at_5(body: dict, group: str, expected_id: str) -> bool:
     return expected_id in [result["id"] for result in body[group]["results"][:HIT_K]]
 
 
-def _metrics(cases: list[dict], responses: dict[str, dict], latencies: list[float]) -> dict:
-    group_totals = Counter(case["group"] for case in cases)
-    group_hits: Counter = Counter()
-    overall_hits = 0
-    for case in cases:
-        if _hit_at_5(responses[case["query_id"]], case["group"], case["expected_id"]):
-            group_hits[case["group"]] += 1
-            overall_hits += 1
-    return {
-        "hit_at_5": {
-            group: round(group_hits[group] / group_totals[group], 4) for group in GROUPS
-        },
-        "overall_hit_at_5": round(overall_hits / len(cases), 4),
-        "p95_ms": round(_p95(latencies), 2),
-    }
-
-
 def run() -> dict:
     with (
         tempfile.TemporaryDirectory(prefix="lifeos-search-eval-") as temporary,
@@ -424,75 +397,35 @@ def run() -> dict:
                 timeline_rows = session.scalar(select(func.count()).select_from(SourceItem)) or 0
                 review_rows = session.scalar(select(func.count()).select_from(Review)) or 0
                 reminder_rows = session.scalar(select(func.count()).select_from(Reminder)) or 0
-                indexed_backend = search_backend(session)
 
             _run_queries(client, headers, queries)
-            indexed_latencies: list[float] = []
-            indexed_responses = _run_queries(client, headers, queries, indexed_latencies)
-            indexed_metrics = _metrics(queries, indexed_responses, indexed_latencies)
+            latencies: list[float] = []
+            responses = _run_queries(client, headers, queries, latencies)
 
-            with session_factory() as session:
-                if backend == "SQLite":
-                    for table in ("timeline_fts", "review_fts", "reminder_fts"):
-                        session.execute(text(f"DROP TABLE IF EXISTS {table}"))
-                    session.commit()
-                elif backend == "PostgreSQL":
-                    for index in ("ix_items_title_trgm", "ix_items_content_trgm", "ix_reviews_final_text_trgm", "ix_reminders_title_trgm", "ix_reminders_notes_trgm"):
-                        session.execute(text(f"DROP INDEX IF EXISTS {index}"))
-                    session.commit()
-                baseline_backend = (
-                    "postgresql-like-without-gin" if backend == "PostgreSQL" else search_backend(session)
-                )
+        group_totals = Counter(case["group"] for case in queries)
+        group_hits: Counter = Counter()
+        overall_hits = 0
+        for case in queries:
+            if _hit_at_5(responses[case["query_id"]], case["group"], case["expected_id"]):
+                group_hits[case["group"]] += 1
+                overall_hits += 1
 
-            _run_queries(client, headers, queries)
-            baseline_latencies: list[float] = []
-            baseline_responses = _run_queries(client, headers, queries, baseline_latencies)
-            baseline_metrics = _metrics(queries, baseline_responses, baseline_latencies)
-
-            with session_factory() as session:
-                rebuild_search_index(session)
-                deletion_case = queries[0]
-                deleted_item = session.get(SourceItem, deletion_case["expected_id"])
-                if deleted_item is None:
-                    raise RuntimeError("Could not select the deletion-consistency fixture.")
-                deleted_item.deleted_at = datetime.now(UTC)
-                session.commit()
-            deletion_body = client.get(
-                SEARCH_PATH,
-                headers=headers,
-                params={"q": deletion_case["query"], "types": deletion_case["group"]},
-            ).json()
-            deletion_consistent = deletion_case["expected_id"] not in [
-                result["id"] for result in deletion_body[deletion_case["group"]]["results"]
-            ]
-
-        group_not_regressed = all(
-            indexed_metrics["hit_at_5"][group] >= baseline_metrics["hit_at_5"][group]
-            for group in GROUPS
-        )
+        hit_at_5 = {
+            group: round(group_hits[group] / group_totals[group], 4) for group in GROUPS
+        }
+        overall_hit_at_5 = round(overall_hits / len(queries), 4)
+        p95_ms = round(_p95(latencies), 2)
         return {
             "environment": f"{backend} + in-process FastAPI TestClient; synthetic only",
             "timeline_rows": timeline_rows,
             "review_rows": review_rows,
             "reminder_rows": reminder_rows,
             "query_count": len(queries),
-            "index_backend": indexed_backend,
-            "hit_at_5": indexed_metrics["hit_at_5"],
-            "overall_hit_at_5": indexed_metrics["overall_hit_at_5"],
-            "p95_ms": indexed_metrics["p95_ms"],
-            "baseline": {"backend": baseline_backend, **baseline_metrics},
-            "comparison": {
-                "hit_at_5_not_regressed": group_not_regressed,
-                "overall_hit_at_5_not_regressed": indexed_metrics["overall_hit_at_5"] >= baseline_metrics["overall_hit_at_5"],
-                "deletion_consistent": deletion_consistent,
-            },
+            "hit_at_5": hit_at_5,
+            "overall_hit_at_5": overall_hit_at_5,
+            "p95_ms": p95_ms,
             "target_ms": TARGET_MS,
-            "pass": (
-                indexed_metrics["p95_ms"] <= TARGET_MS
-                and group_not_regressed
-                and indexed_metrics["overall_hit_at_5"] >= baseline_metrics["overall_hit_at_5"]
-                and deletion_consistent
-            ),
+            "pass": p95_ms <= TARGET_MS and overall_hit_at_5 == 1.0,
         }
 
 

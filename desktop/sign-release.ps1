@@ -54,5 +54,6 @@ if ($env:LIFEOS_SIGN_THUMBPRINT) {
 $signTool = Find-SignTool
 $signArgs += (Resolve-Path -LiteralPath $Path).Path
 & $signTool @signArgs
-if ($LASTEXITCODE -ne 0) { throw "signtool failed ($LASTEXITCODE) for $Path" }
+$signExit = $LASTEXITCODE
+if ($signExit -ne 0) { throw "signtool failed ($signExit) for $Path" }
 Write-Host "Signed: $Path"

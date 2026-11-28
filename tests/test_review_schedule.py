@@ -79,8 +79,6 @@ def test_schedule_defaults_validation_and_owner_isolation(client) -> None:
         "local_minute": 0,
         "timezone": "Asia/Shanghai",
         "use_external_model": False,
-        "provider_id": "default",
-        "model": None,
         "last_run_at": None,
         "next_run_at": None,
         "last_review_id": None,

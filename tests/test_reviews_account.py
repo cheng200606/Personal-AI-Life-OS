@@ -136,7 +136,7 @@ def test_worker_external_review_completes_with_ready_status(client, monkeypatch)
 
     def ready_model(items, _config):
         return (
-            {"facts": [{"text": items[0].content_text, "source_ids": [items[0].id]}], "suggestions": []},
+            {"facts": [{"text": "Synthetic model fact", "source_ids": [items[0].id]}], "suggestions": []},
             12,
             100,
             20,
@@ -147,7 +147,7 @@ def test_worker_external_review_completes_with_ready_status(client, monkeypatch)
     completed = client.get("/api/v1/reviews/" + review["id"], headers=headers).json()
     assert completed["status"] == "draft"
     assert completed["draft"]["model"]["status"] == "ready"
-    assert completed["draft"]["facts"][0]["text"] == completed["source_items"][0]["content_text"]
+    assert completed["draft"]["facts"][0]["text"] == "Synthetic model fact"
 
 
 def test_queued_review_cannot_overwrite_a_user_confirmation(client, monkeypatch) -> None:
